@@ -1,0 +1,3659 @@
+{
+ "format": "edgeforge-golden-v1",
+ "tokenizer_class": "LlamaTokenizer",
+ "legacy": false,
+ "vocab_size": 32000,
+ "bos_id": 1,
+ "eos_id": 2,
+ "unk_id": 0,
+ "add_bos_token": false,
+ "add_eos_token": false,
+ "cases": [
+  {
+   "text": "",
+   "ids": [],
+   "ids_default": [
+    1
+   ],
+   "pieces": [],
+   "decoded": "",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [
+    29871
+   ],
+   "ids_default": [
+    1,
+    29871
+   ],
+   "pieces": [
+    "▁"
+   ],
+   "decoded": "",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": "  ",
+   "ids": [
+    259
+   ],
+   "ids_default": [
+    1,
+    259
+   ],
+   "pieces": [
+    "▁▁"
+   ],
+   "decoded": " ",
+   "decoded_skip_special": " "
+  },
+  {
+   "text": "   ",
+   "ids": [
+    1678
+   ],
+   "ids_default": [
+    1,
+    1678
+   ],
+   "pieces": [
+    "▁▁▁"
+   ],
+   "decoded": "  ",
+   "decoded_skip_special": "  "
+  },
+  {
+   "text": "a",
+   "ids": [
+    263
+   ],
+   "ids_default": [
+    1,
+    263
+   ],
+   "pieces": [
+    "▁a"
+   ],
+   "decoded": "a",
+   "decoded_skip_special": "a"
+  },
+  {
+   "text": "A",
+   "ids": [
+    319
+   ],
+   "ids_default": [
+    1,
+    319
+   ],
+   "pieces": [
+    "▁A"
+   ],
+   "decoded": "A",
+   "decoded_skip_special": "A"
+  },
+  {
+   "text": "I",
+   "ids": [
+    306
+   ],
+   "ids_default": [
+    1,
+    306
+   ],
+   "pieces": [
+    "▁I"
+   ],
+   "decoded": "I",
+   "decoded_skip_special": "I"
+  },
+  {
+   "text": "hello",
+   "ids": [
+    22172
+   ],
+   "ids_default": [
+    1,
+    22172
+   ],
+   "pieces": [
+    "▁hello"
+   ],
+   "decoded": "hello",
+   "decoded_skip_special": "hello"
+  },
+  {
+   "text": "Hello",
+   "ids": [
+    15043
+   ],
+   "ids_default": [
+    1,
+    15043
+   ],
+   "pieces": [
+    "▁Hello"
+   ],
+   "decoded": "Hello",
+   "decoded_skip_special": "Hello"
+  },
+  {
+   "text": "Hello world",
+   "ids": [
+    15043,
+    3186
+   ],
+   "ids_default": [
+    1,
+    15043,
+    3186
+   ],
+   "pieces": [
+    "▁Hello",
+    "▁world"
+   ],
+   "decoded": "Hello world",
+   "decoded_skip_special": "Hello world"
+  },
+  {
+   "text": " Hello world",
+   "ids": [
+    15043,
+    3186
+   ],
+   "ids_default": [
+    1,
+    15043,
+    3186
+   ],
+   "pieces": [
+    "▁Hello",
+    "▁world"
+   ],
+   "decoded": "Hello world",
+   "decoded_skip_special": "Hello world"
+  },
+  {
+   "text": "Hello  world",
+   "ids": [
+    15043,
+    29871,
+    3186
+   ],
+   "ids_default": [
+    1,
+    15043,
+    29871,
+    3186
+   ],
+   "pieces": [
+    "▁Hello",
+    "▁",
+    "▁world"
+   ],
+   "decoded": "Hello  world",
+   "decoded_skip_special": "Hello  world"
+  },
+  {
+   "text": "Hello world ",
+   "ids": [
+    15043,
+    3186,
+    29871
+   ],
+   "ids_default": [
+    1,
+    15043,
+    3186,
+    29871
+   ],
+   "pieces": [
+    "▁Hello",
+    "▁world",
+    "▁"
+   ],
+   "decoded": "Hello world ",
+   "decoded_skip_special": "Hello world "
+  },
+  {
+   "text": "  leading spaces",
+   "ids": [
+    29871,
+    8236,
+    8162
+   ],
+   "ids_default": [
+    1,
+    29871,
+    8236,
+    8162
+   ],
+   "pieces": [
+    "▁",
+    "▁leading",
+    "▁spaces"
+   ],
+   "decoded": " leading spaces",
+   "decoded_skip_special": " leading spaces"
+  },
+  {
+   "text": "trailing spaces  ",
+   "ids": [
+    25053,
+    8162,
+    259
+   ],
+   "ids_default": [
+    1,
+    25053,
+    8162,
+    259
+   ],
+   "pieces": [
+    "▁trailing",
+    "▁spaces",
+    "▁▁"
+   ],
+   "decoded": "trailing spaces  ",
+   "decoded_skip_special": "trailing spaces  "
+  },
+  {
+   "text": "Hello\nworld",
+   "ids": [
+    15043,
+    13,
+    11526
+   ],
+   "ids_default": [
+    1,
+    15043,
+    13,
+    11526
+   ],
+   "pieces": [
+    "▁Hello",
+    "<0x0A>",
+    "world"
+   ],
+   "decoded": "Hello\nworld",
+   "decoded_skip_special": "Hello\nworld"
+  },
+  {
+   "text": "\n",
+   "ids": [
+    29871,
+    13
+   ],
+   "ids_default": [
+    1,
+    29871,
+    13
+   ],
+   "pieces": [
+    "▁",
+    "<0x0A>"
+   ],
+   "decoded": "\n",
+   "decoded_skip_special": "\n"
+  },
+  {
+   "text": "\n\n",
+   "ids": [
+    29871,
+    13,
+    13
+   ],
+   "ids_default": [
+    1,
+    29871,
+    13,
+    13
+   ],
+   "pieces": [
+    "▁",
+    "<0x0A>",
+    "<0x0A>"
+   ],
+   "decoded": "\n\n",
+   "decoded_skip_special": "\n\n"
+  },
+  {
+   "text": "\n\n\n",
+   "ids": [
+    29871,
+    13,
+    13,
+    13
+   ],
+   "ids_default": [
+    1,
+    29871,
+    13,
+    13,
+    13
+   ],
+   "pieces": [
+    "▁",
+    "<0x0A>",
+    "<0x0A>",
+    "<0x0A>"
+   ],
+   "decoded": "\n\n\n",
+   "decoded_skip_special": "\n\n\n"
+  },
+  {
+   "text": "\t",
+   "ids": [
+    29871,
+    12
+   ],
+   "ids_default": [
+    1,
+    29871,
+    12
+   ],
+   "pieces": [
+    "▁",
+    "<0x09>"
+   ],
+   "decoded": "\t",
+   "decoded_skip_special": "\t"
+  },
+  {
+   "text": "tab\tseparated\tvalues",
+   "ids": [
+    4434,
+    12,
+    25048,
+    630,
+    12,
+    5975
+   ],
+   "ids_default": [
+    1,
+    4434,
+    12,
+    25048,
+    630,
+    12,
+    5975
+   ],
+   "pieces": [
+    "▁tab",
+    "<0x09>",
+    "separ",
+    "ated",
+    "<0x09>",
+    "values"
+   ],
+   "decoded": "tab\tseparated\tvalues",
+   "decoded_skip_special": "tab\tseparated\tvalues"
+  },
+  {
+   "text": "\r\n",
+   "ids": [
+    6756,
+    13
+   ],
+   "ids_default": [
+    1,
+    6756,
+    13
+   ],
+   "pieces": [
+    "▁\r",
+    "<0x0A>"
+   ],
+   "decoded": "\r\n",
+   "decoded_skip_special": "\r\n"
+  },
+  {
+   "text": "line one\r\nline two",
+   "ids": [
+    1196,
+    697,
+    30004,
+    13,
+    1220,
+    1023
+   ],
+   "ids_default": [
+    1,
+    1196,
+    697,
+    30004,
+    13,
+    1220,
+    1023
+   ],
+   "pieces": [
+    "▁line",
+    "▁one",
+    "\r",
+    "<0x0A>",
+    "line",
+    "▁two"
+   ],
+   "decoded": "line one\r\nline two",
+   "decoded_skip_special": "line one\r\nline two"
+  },
+  {
+   "text": "  \n  ",
+   "ids": [
+    259,
+    13,
+    259
+   ],
+   "ids_default": [
+    1,
+    259,
+    13,
+    259
+   ],
+   "pieces": [
+    "▁▁",
+    "<0x0A>",
+    "▁▁"
+   ],
+   "decoded": " \n  ",
+   "decoded_skip_special": " \n  "
+  },
+  {
+   "text": "a\n b\n  c",
+   "ids": [
+    263,
+    13,
+    289,
+    13,
+    29871,
+    274
+   ],
+   "ids_default": [
+    1,
+    263,
+    13,
+    289,
+    13,
+    29871,
+    274
+   ],
+   "pieces": [
+    "▁a",
+    "<0x0A>",
+    "▁b",
+    "<0x0A>",
+    "▁",
+    "▁c"
+   ],
+   "decoded": "a\n b\n  c",
+   "decoded_skip_special": "a\n b\n  c"
+  },
+  {
+   "text": "12345",
+   "ids": [
+    29871,
+    29896,
+    29906,
+    29941,
+    29946,
+    29945
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29896,
+    29906,
+    29941,
+    29946,
+    29945
+   ],
+   "pieces": [
+    "▁",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5"
+   ],
+   "decoded": "12345",
+   "decoded_skip_special": "12345"
+  },
+  {
+   "text": "3.14159",
+   "ids": [
+    29871,
+    29941,
+    29889,
+    29896,
+    29946,
+    29896,
+    29945,
+    29929
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29941,
+    29889,
+    29896,
+    29946,
+    29896,
+    29945,
+    29929
+   ],
+   "pieces": [
+    "▁",
+    "3",
+    ".",
+    "1",
+    "4",
+    "1",
+    "5",
+    "9"
+   ],
+   "decoded": "3.14159",
+   "decoded_skip_special": "3.14159"
+  },
+  {
+   "text": "1,000,000",
+   "ids": [
+    29871,
+    29896,
+    29892,
+    29900,
+    29900,
+    29900,
+    29892,
+    29900,
+    29900,
+    29900
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29896,
+    29892,
+    29900,
+    29900,
+    29900,
+    29892,
+    29900,
+    29900,
+    29900
+   ],
+   "pieces": [
+    "▁",
+    "1",
+    ",",
+    "0",
+    "0",
+    "0",
+    ",",
+    "0",
+    "0",
+    "0"
+   ],
+   "decoded": "1,000,000",
+   "decoded_skip_special": "1,000,000"
+  },
+  {
+   "text": "2024-10-31",
+   "ids": [
+    29871,
+    29906,
+    29900,
+    29906,
+    29946,
+    29899,
+    29896,
+    29900,
+    29899,
+    29941,
+    29896
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29906,
+    29900,
+    29906,
+    29946,
+    29899,
+    29896,
+    29900,
+    29899,
+    29941,
+    29896
+   ],
+   "pieces": [
+    "▁",
+    "2",
+    "0",
+    "2",
+    "4",
+    "-",
+    "1",
+    "0",
+    "-",
+    "3",
+    "1"
+   ],
+   "decoded": "2024-10-31",
+   "decoded_skip_special": "2024-10-31"
+  },
+  {
+   "text": "100%",
+   "ids": [
+    29871,
+    29896,
+    29900,
+    29900,
+    29995
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29896,
+    29900,
+    29900,
+    29995
+   ],
+   "pieces": [
+    "▁",
+    "1",
+    "0",
+    "0",
+    "%"
+   ],
+   "decoded": "100%",
+   "decoded_skip_special": "100%"
+  },
+  {
+   "text": "$9.99",
+   "ids": [
+    395,
+    29929,
+    29889,
+    29929,
+    29929
+   ],
+   "ids_default": [
+    1,
+    395,
+    29929,
+    29889,
+    29929,
+    29929
+   ],
+   "pieces": [
+    "▁$",
+    "9",
+    ".",
+    "9",
+    "9"
+   ],
+   "decoded": "$9.99",
+   "decoded_skip_special": "$9.99"
+  },
+  {
+   "text": "x = 42",
+   "ids": [
+    921,
+    353,
+    29871,
+    29946,
+    29906
+   ],
+   "ids_default": [
+    1,
+    921,
+    353,
+    29871,
+    29946,
+    29906
+   ],
+   "pieces": [
+    "▁x",
+    "▁=",
+    "▁",
+    "4",
+    "2"
+   ],
+   "decoded": "x = 42",
+   "decoded_skip_special": "x = 42"
+  },
+  {
+   "text": "007",
+   "ids": [
+    29871,
+    29900,
+    29900,
+    29955
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29900,
+    29900,
+    29955
+   ],
+   "pieces": [
+    "▁",
+    "0",
+    "0",
+    "7"
+   ],
+   "decoded": "007",
+   "decoded_skip_special": "007"
+  },
+  {
+   "text": "1e-5",
+   "ids": [
+    29871,
+    29896,
+    29872,
+    29899,
+    29945
+   ],
+   "ids_default": [
+    1,
+    29871,
+    29896,
+    29872,
+    29899,
+    29945
+   ],
+   "pieces": [
+    "▁",
+    "1",
+    "e",
+    "-",
+    "5"
+   ],
+   "decoded": "1e-5",
+   "decoded_skip_special": "1e-5"
+  },
+  {
+   "text": "Hello, world! How are you?",
+   "ids": [
+    15043,
+    29892,
+    3186,
+    29991,
+    1128,
+    526,
+    366,
+    29973
+   ],
+   "ids_default": [
+    1,
+    15043,
+    29892,
+    3186,
+    29991,
+    1128,
+    526,
+    366,
+    29973
+   ],
+   "pieces": [
+    "▁Hello",
+    ",",
+    "▁world",
+    "!",
+    "▁How",
+    "▁are",
+    "▁you",
+    "?"
+   ],
+   "decoded": "Hello, world! How are you?",
+   "decoded_skip_special": "Hello, world! How are you?"
+  },
+  {
+   "text": "Wait... what?!",
+   "ids": [
+    20340,
+    856,
+    825,
+    29973,
+    29991
+   ],
+   "ids_default": [
+    1,
+    20340,
+    856,
+    825,
+    29973,
+    29991
+   ],
+   "pieces": [
+    "▁Wait",
+    "...",
+    "▁what",
+    "?",
+    "!"
+   ],
+   "decoded": "Wait... what?!",
+   "decoded_skip_special": "Wait... what?!"
+  },
+  {
+   "text": "\"quoted\" and 'single'",
+   "ids": [
+    376,
+    339,
+    5715,
+    29908,
+    322,
+    525,
+    14369,
+    29915
+   ],
+   "ids_default": [
+    1,
+    376,
+    339,
+    5715,
+    29908,
+    322,
+    525,
+    14369,
+    29915
+   ],
+   "pieces": [
+    "▁\"",
+    "qu",
+    "oted",
+    "\"",
+    "▁and",
+    "▁'",
+    "single",
+    "'"
+   ],
+   "decoded": "\"quoted\" and 'single'",
+   "decoded_skip_special": "\"quoted\" and 'single'"
+  },
+  {
+   "text": "(parentheses) [brackets] {braces}",
+   "ids": [
+    313,
+    3560,
+    13244,
+    267,
+    29897,
+    518,
+    2634,
+    9737,
+    29962,
+    426,
+    2634,
+    778,
+    29913
+   ],
+   "ids_default": [
+    1,
+    313,
+    3560,
+    13244,
+    267,
+    29897,
+    518,
+    2634,
+    9737,
+    29962,
+    426,
+    2634,
+    778,
+    29913
+   ],
+   "pieces": [
+    "▁(",
+    "parent",
+    "hes",
+    "es",
+    ")",
+    "▁[",
+    "bra",
+    "ckets",
+    "]",
+    "▁{",
+    "bra",
+    "ces",
+    "}"
+   ],
+   "decoded": "(parentheses) [brackets] {braces}",
+   "decoded_skip_special": "(parentheses) [brackets] {braces}"
+  },
+  {
+   "text": "semi;colon:colon",
+   "ids": [
+    12647,
+    29936,
+    17308,
+    29901,
+    17308
+   ],
+   "ids_default": [
+    1,
+    12647,
+    29936,
+    17308,
+    29901,
+    17308
+   ],
+   "pieces": [
+    "▁semi",
+    ";",
+    "colon",
+    ":",
+    "colon"
+   ],
+   "decoded": "semi;colon:colon",
+   "decoded_skip_special": "semi;colon:colon"
+  },
+  {
+   "text": "a-b_c.d/e\\f",
+   "ids": [
+    263,
+    29899,
+    29890,
+    29918,
+    29883,
+    29889,
+    29881,
+    29914,
+    29872,
+    29905,
+    29888
+   ],
+   "ids_default": [
+    1,
+    263,
+    29899,
+    29890,
+    29918,
+    29883,
+    29889,
+    29881,
+    29914,
+    29872,
+    29905,
+    29888
+   ],
+   "pieces": [
+    "▁a",
+    "-",
+    "b",
+    "_",
+    "c",
+    ".",
+    "d",
+    "/",
+    "e",
+    "\\",
+    "f"
+   ],
+   "decoded": "a-b_c.d/e\\f",
+   "decoded_skip_special": "a-b_c.d/e\\f"
+  },
+  {
+   "text": "@user #hashtag",
+   "ids": [
+    732,
+    1792,
+    396,
+    5349,
+    400,
+    351
+   ],
+   "ids_default": [
+    1,
+    732,
+    1792,
+    396,
+    5349,
+    400,
+    351
+   ],
+   "pieces": [
+    "▁@",
+    "user",
+    "▁#",
+    "has",
+    "ht",
+    "ag"
+   ],
+   "decoded": "@user #hashtag",
+   "decoded_skip_special": "@user #hashtag"
+  },
+  {
+   "text": "email@example.com",
+   "ids": [
+    4876,
+    29992,
+    4773,
+    29889,
+    510
+   ],
+   "ids_default": [
+    1,
+    4876,
+    29992,
+    4773,
+    29889,
+    510
+   ],
+   "pieces": [
+    "▁email",
+    "@",
+    "example",
+    ".",
+    "com"
+   ],
+   "decoded": "email@example.com",
+   "decoded_skip_special": "email@example.com"
+  },
+  {
+   "text": "https://example.com/path?q=1&r=2",
+   "ids": [
+    2045,
+    597,
+    4773,
+    29889,
+    510,
+    29914,
+    2084,
+    29973,
+    29939,
+    29922,
+    29896,
+    29987,
+    29878,
+    29922,
+    29906
+   ],
+   "ids_default": [
+    1,
+    2045,
+    597,
+    4773,
+    29889,
+    510,
+    29914,
+    2084,
+    29973,
+    29939,
+    29922,
+    29896,
+    29987,
+    29878,
+    29922,
+    29906
+   ],
+   "pieces": [
+    "▁https",
+    "://",
+    "example",
+    ".",
+    "com",
+    "/",
+    "path",
+    "?",
+    "q",
+    "=",
+    "1",
+    "&",
+    "r",
+    "=",
+    "2"
+   ],
+   "decoded": "https://example.com/path?q=1&r=2",
+   "decoded_skip_special": "https://example.com/path?q=1&r=2"
+  },
+  {
+   "text": "def f(x):\n    return x * 2\n",
+   "ids": [
+    822,
+    285,
+    29898,
+    29916,
+    1125,
+    13,
+    1678,
+    736,
+    921,
+    334,
+    29871,
+    29906,
+    13
+   ],
+   "ids_default": [
+    1,
+    822,
+    285,
+    29898,
+    29916,
+    1125,
+    13,
+    1678,
+    736,
+    921,
+    334,
+    29871,
+    29906,
+    13
+   ],
+   "pieces": [
+    "▁def",
+    "▁f",
+    "(",
+    "x",
+    "):",
+    "<0x0A>",
+    "▁▁▁",
+    "▁return",
+    "▁x",
+    "▁*",
+    "▁",
+    "2",
+    "<0x0A>"
+   ],
+   "decoded": "def f(x):\n    return x * 2\n",
+   "decoded_skip_special": "def f(x):\n    return x * 2\n"
+  },
+  {
+   "text": "for (int i = 0; i < n; ++i) {\n    sum += a[i];\n}",
+   "ids": [
+    363,
+    313,
+    524,
+    474,
+    353,
+    29871,
+    29900,
+    29936,
+    474,
+    529,
+    302,
+    29936,
+    8445,
+    29875,
+    29897,
+    426,
+    13,
+    1678,
+    2533,
+    4619,
+    263,
+    29961,
+    29875,
+    1385,
+    13,
+    29913
+   ],
+   "ids_default": [
+    1,
+    363,
+    313,
+    524,
+    474,
+    353,
+    29871,
+    29900,
+    29936,
+    474,
+    529,
+    302,
+    29936,
+    8445,
+    29875,
+    29897,
+    426,
+    13,
+    1678,
+    2533,
+    4619,
+    263,
+    29961,
+    29875,
+    1385,
+    13,
+    29913
+   ],
+   "pieces": [
+    "▁for",
+    "▁(",
+    "int",
+    "▁i",
+    "▁=",
+    "▁",
+    "0",
+    ";",
+    "▁i",
+    "▁<",
+    "▁n",
+    ";",
+    "▁++",
+    "i",
+    ")",
+    "▁{",
+    "<0x0A>",
+    "▁▁▁",
+    "▁sum",
+    "▁+=",
+    "▁a",
+    "[",
+    "i",
+    "];",
+    "<0x0A>",
+    "}"
+   ],
+   "decoded": "for (int i = 0; i < n; ++i) {\n    sum += a[i];\n}",
+   "decoded_skip_special": "for (int i = 0; i < n; ++i) {\n    sum += a[i];\n}"
+  },
+  {
+   "text": "#include <stdio.h>",
+   "ids": [
+    396,
+    2856,
+    529,
+    23656,
+    29889,
+    29882,
+    29958
+   ],
+   "ids_default": [
+    1,
+    396,
+    2856,
+    529,
+    23656,
+    29889,
+    29882,
+    29958
+   ],
+   "pieces": [
+    "▁#",
+    "include",
+    "▁<",
+    "stdio",
+    ".",
+    "h",
+    ">"
+   ],
+   "decoded": "#include <stdio.h>",
+   "decoded_skip_special": "#include <stdio.h>"
+  },
+  {
+   "text": "x += 1; // comment",
+   "ids": [
+    921,
+    4619,
+    29871,
+    29896,
+    29936,
+    849,
+    3440
+   ],
+   "ids_default": [
+    1,
+    921,
+    4619,
+    29871,
+    29896,
+    29936,
+    849,
+    3440
+   ],
+   "pieces": [
+    "▁x",
+    "▁+=",
+    "▁",
+    "1",
+    ";",
+    "▁//",
+    "▁comment"
+   ],
+   "decoded": "x += 1; // comment",
+   "decoded_skip_special": "x += 1; // comment"
+  },
+  {
+   "text": "SELECT * FROM users WHERE id = 1;",
+   "ids": [
+    5097,
+    334,
+    3895,
+    4160,
+    5754,
+    1178,
+    353,
+    29871,
+    29896,
+    29936
+   ],
+   "ids_default": [
+    1,
+    5097,
+    334,
+    3895,
+    4160,
+    5754,
+    1178,
+    353,
+    29871,
+    29896,
+    29936
+   ],
+   "pieces": [
+    "▁SELECT",
+    "▁*",
+    "▁FROM",
+    "▁users",
+    "▁WHERE",
+    "▁id",
+    "▁=",
+    "▁",
+    "1",
+    ";"
+   ],
+   "decoded": "SELECT * FROM users WHERE id = 1;",
+   "decoded_skip_special": "SELECT * FROM users WHERE id = 1;"
+  },
+  {
+   "text": "{\"key\": \"value\", \"n\": [1, 2]}",
+   "ids": [
+    8853,
+    1989,
+    1115,
+    376,
+    1767,
+    613,
+    376,
+    29876,
+    1115,
+    518,
+    29896,
+    29892,
+    29871,
+    29906,
+    12258
+   ],
+   "ids_default": [
+    1,
+    8853,
+    1989,
+    1115,
+    376,
+    1767,
+    613,
+    376,
+    29876,
+    1115,
+    518,
+    29896,
+    29892,
+    29871,
+    29906,
+    12258
+   ],
+   "pieces": [
+    "▁{\"",
+    "key",
+    "\":",
+    "▁\"",
+    "value",
+    "\",",
+    "▁\"",
+    "n",
+    "\":",
+    "▁[",
+    "1",
+    ",",
+    "▁",
+    "2",
+    "]}"
+   ],
+   "decoded": "{\"key\": \"value\", \"n\": [1, 2]}",
+   "decoded_skip_special": "{\"key\": \"value\", \"n\": [1, 2]}"
+  },
+  {
+   "text": "<html><body>Hi</body></html>",
+   "ids": [
+    529,
+    1420,
+    5299,
+    2587,
+    29958,
+    18567,
+    829,
+    2587,
+    2565,
+    1420,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    1420,
+    5299,
+    2587,
+    29958,
+    18567,
+    829,
+    2587,
+    2565,
+    1420,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "html",
+    "><",
+    "body",
+    ">",
+    "Hi",
+    "</",
+    "body",
+    "></",
+    "html",
+    ">"
+   ],
+   "decoded": "<html><body>Hi</body></html>",
+   "decoded_skip_special": "<html><body>Hi</body></html>"
+  },
+  {
+   "text": "if a != b and not c: pass",
+   "ids": [
+    565,
+    263,
+    2804,
+    289,
+    322,
+    451,
+    274,
+    29901,
+    1209
+   ],
+   "ids_default": [
+    1,
+    565,
+    263,
+    2804,
+    289,
+    322,
+    451,
+    274,
+    29901,
+    1209
+   ],
+   "pieces": [
+    "▁if",
+    "▁a",
+    "▁!=",
+    "▁b",
+    "▁and",
+    "▁not",
+    "▁c",
+    ":",
+    "▁pass"
+   ],
+   "decoded": "if a != b and not c: pass",
+   "decoded_skip_special": "if a != b and not c: pass"
+  },
+  {
+   "text": "    indented four",
+   "ids": [
+    1678,
+    1399,
+    14927,
+    3023
+   ],
+   "ids_default": [
+    1,
+    1678,
+    1399,
+    14927,
+    3023
+   ],
+   "pieces": [
+    "▁▁▁",
+    "▁ind",
+    "ented",
+    "▁four"
+   ],
+   "decoded": "   indented four",
+   "decoded_skip_special": "   indented four"
+  },
+  {
+   "text": "\tindented tab",
+   "ids": [
+    29871,
+    12,
+    12860,
+    287,
+    4434
+   ],
+   "ids_default": [
+    1,
+    29871,
+    12,
+    12860,
+    287,
+    4434
+   ],
+   "pieces": [
+    "▁",
+    "<0x09>",
+    "indent",
+    "ed",
+    "▁tab"
+   ],
+   "decoded": "\tindented tab",
+   "decoded_skip_special": "\tindented tab"
+  },
+  {
+   "text": "😀",
+   "ids": [
+    29871,
+    243,
+    162,
+    155,
+    131
+   ],
+   "ids_default": [
+    1,
+    29871,
+    243,
+    162,
+    155,
+    131
+   ],
+   "pieces": [
+    "▁",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x98>",
+    "<0x80>"
+   ],
+   "decoded": "😀",
+   "decoded_skip_special": "😀"
+  },
+  {
+   "text": "I ❤️ NLP",
+   "ids": [
+    306,
+    29871,
+    229,
+    160,
+    167,
+    30598,
+    405,
+    13208
+   ],
+   "ids_default": [
+    1,
+    306,
+    29871,
+    229,
+    160,
+    167,
+    30598,
+    405,
+    13208
+   ],
+   "pieces": [
+    "▁I",
+    "▁",
+    "<0xE2>",
+    "<0x9D>",
+    "<0xA4>",
+    "️",
+    "▁N",
+    "LP"
+   ],
+   "decoded": "I ❤️ NLP",
+   "decoded_skip_special": "I ❤️ NLP"
+  },
+  {
+   "text": "👍🏽",
+   "ids": [
+    29871,
+    243,
+    162,
+    148,
+    144,
+    243,
+    162,
+    146,
+    192
+   ],
+   "ids_default": [
+    1,
+    29871,
+    243,
+    162,
+    148,
+    144,
+    243,
+    162,
+    146,
+    192
+   ],
+   "pieces": [
+    "▁",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x91>",
+    "<0x8D>",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x8F>",
+    "<0xBD>"
+   ],
+   "decoded": "👍🏽",
+   "decoded_skip_special": "👍🏽"
+  },
+  {
+   "text": "🇮🇳",
+   "ids": [
+    29871,
+    243,
+    162,
+    138,
+    177,
+    243,
+    162,
+    138,
+    182
+   ],
+   "ids_default": [
+    1,
+    29871,
+    243,
+    162,
+    138,
+    177,
+    243,
+    162,
+    138,
+    182
+   ],
+   "pieces": [
+    "▁",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x87>",
+    "<0xAE>",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x87>",
+    "<0xB3>"
+   ],
+   "decoded": "🇮🇳",
+   "decoded_skip_special": "🇮🇳"
+  },
+  {
+   "text": "a‍b",
+   "ids": [
+    263,
+    30722,
+    29890
+   ],
+   "ids_default": [
+    1,
+    263,
+    30722,
+    29890
+   ],
+   "pieces": [
+    "▁a",
+    "‍",
+    "b"
+   ],
+   "decoded": "a‍b",
+   "decoded_skip_special": "a‍b"
+  },
+  {
+   "text": "non breaking",
+   "ids": [
+    1661,
+    30081,
+    1030,
+    5086
+   ],
+   "ids_default": [
+    1,
+    1661,
+    30081,
+    1030,
+    5086
+   ],
+   "pieces": [
+    "▁non",
+    " ",
+    "bre",
+    "aking"
+   ],
+   "decoded": "non breaking",
+   "decoded_skip_special": "non breaking"
+  },
+  {
+   "text": "नमस्ते",
+   "ids": [
+    29871,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569
+   ],
+   "pieces": [
+    "▁",
+    "न",
+    "म",
+    "स",
+    "्",
+    "त",
+    "े"
+   ],
+   "decoded": "नमस्ते",
+   "decoded_skip_special": "नमस्ते"
+  },
+  {
+   "text": "भारत की राजधानी क्या है?",
+   "ids": [
+    29871,
+    31380,
+    30269,
+    30316,
+    30475,
+    29871,
+    30444,
+    30580,
+    29871,
+    30316,
+    30269,
+    30871,
+    31437,
+    30269,
+    30424,
+    30580,
+    29871,
+    30444,
+    30296,
+    30640,
+    30269,
+    29871,
+    30714,
+    31678,
+    29973
+   ],
+   "ids_default": [
+    1,
+    29871,
+    31380,
+    30269,
+    30316,
+    30475,
+    29871,
+    30444,
+    30580,
+    29871,
+    30316,
+    30269,
+    30871,
+    31437,
+    30269,
+    30424,
+    30580,
+    29871,
+    30444,
+    30296,
+    30640,
+    30269,
+    29871,
+    30714,
+    31678,
+    29973
+   ],
+   "pieces": [
+    "▁",
+    "भ",
+    "ा",
+    "र",
+    "त",
+    "▁",
+    "क",
+    "ी",
+    "▁",
+    "र",
+    "ा",
+    "ज",
+    "ध",
+    "ा",
+    "न",
+    "ी",
+    "▁",
+    "क",
+    "्",
+    "य",
+    "ा",
+    "▁",
+    "ह",
+    "ै",
+    "?"
+   ],
+   "decoded": "भारत की राजधानी क्या है?",
+   "decoded_skip_special": "भारत की राजधानी क्या है?"
+  },
+  {
+   "text": "मैं ठीक हूँ, धन्यवाद।",
+   "ids": [
+    29871,
+    30485,
+    31678,
+    30757,
+    29871,
+    227,
+    167,
+    163,
+    30580,
+    30444,
+    29871,
+    30714,
+    31413,
+    227,
+    167,
+    132,
+    29892,
+    29871,
+    31437,
+    30424,
+    30296,
+    30640,
+    30610,
+    30269,
+    30694,
+    31776
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30485,
+    31678,
+    30757,
+    29871,
+    227,
+    167,
+    163,
+    30580,
+    30444,
+    29871,
+    30714,
+    31413,
+    227,
+    167,
+    132,
+    29892,
+    29871,
+    31437,
+    30424,
+    30296,
+    30640,
+    30610,
+    30269,
+    30694,
+    31776
+   ],
+   "pieces": [
+    "▁",
+    "म",
+    "ै",
+    "ं",
+    "▁",
+    "<0xE0>",
+    "<0xA4>",
+    "<0xA0>",
+    "ी",
+    "क",
+    "▁",
+    "ह",
+    "ू",
+    "<0xE0>",
+    "<0xA4>",
+    "<0x81>",
+    ",",
+    "▁",
+    "ध",
+    "न",
+    "्",
+    "य",
+    "व",
+    "ा",
+    "द",
+    "।"
+   ],
+   "decoded": "मैं ठीक हूँ, धन्यवाद।",
+   "decoded_skip_special": "मैं ठीक हूँ, धन्यवाद।"
+  },
+  {
+   "text": "bhai kaise ho",
+   "ids": [
+    289,
+    23535,
+    13560,
+    895,
+    5089
+   ],
+   "ids_default": [
+    1,
+    289,
+    23535,
+    13560,
+    895,
+    5089
+   ],
+   "pieces": [
+    "▁b",
+    "hai",
+    "▁ka",
+    "ise",
+    "▁ho"
+   ],
+   "decoded": "bhai kaise ho",
+   "decoded_skip_special": "bhai kaise ho"
+  },
+  {
+   "text": "Hello नमस्ते 😀 123",
+   "ids": [
+    15043,
+    29871,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569,
+    29871,
+    243,
+    162,
+    155,
+    131,
+    29871,
+    29896,
+    29906,
+    29941
+   ],
+   "ids_default": [
+    1,
+    15043,
+    29871,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569,
+    29871,
+    243,
+    162,
+    155,
+    131,
+    29871,
+    29896,
+    29906,
+    29941
+   ],
+   "pieces": [
+    "▁Hello",
+    "▁",
+    "न",
+    "म",
+    "स",
+    "्",
+    "त",
+    "े",
+    "▁",
+    "<0xF0>",
+    "<0x9F>",
+    "<0x98>",
+    "<0x80>",
+    "▁",
+    "1",
+    "2",
+    "3"
+   ],
+   "decoded": "Hello नमस्ते 😀 123",
+   "decoded_skip_special": "Hello नमस्ते 😀 123"
+  },
+  {
+   "text": "你好，世界",
+   "ids": [
+    29871,
+    30919,
+    31076,
+    30214,
+    30793,
+    30967
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30919,
+    31076,
+    30214,
+    30793,
+    30967
+   ],
+   "pieces": [
+    "▁",
+    "你",
+    "好",
+    "，",
+    "世",
+    "界"
+   ],
+   "decoded": "你好，世界",
+   "decoded_skip_special": "你好，世界"
+  },
+  {
+   "text": "こんにちは",
+   "ids": [
+    29871,
+    30589,
+    30389,
+    30353,
+    30644,
+    30449
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30589,
+    30389,
+    30353,
+    30644,
+    30449
+   ],
+   "pieces": [
+    "▁",
+    "こ",
+    "ん",
+    "に",
+    "ち",
+    "は"
+   ],
+   "decoded": "こんにちは",
+   "decoded_skip_special": "こんにちは"
+  },
+  {
+   "text": "안녕하세요",
+   "ids": [
+    29871,
+    31734,
+    238,
+    136,
+    152,
+    30944,
+    31578,
+    31527
+   ],
+   "ids_default": [
+    1,
+    29871,
+    31734,
+    238,
+    136,
+    152,
+    30944,
+    31578,
+    31527
+   ],
+   "pieces": [
+    "▁",
+    "안",
+    "<0xEB>",
+    "<0x85>",
+    "<0x95>",
+    "하",
+    "세",
+    "요"
+   ],
+   "decoded": "안녕하세요",
+   "decoded_skip_special": "안녕하세요"
+  },
+  {
+   "text": "مرحبا بالعالم",
+   "ids": [
+    29871,
+    30159,
+    30156,
+    30240,
+    30177,
+    30112,
+    29871,
+    30177,
+    19233,
+    30218,
+    19233,
+    30159
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30159,
+    30156,
+    30240,
+    30177,
+    30112,
+    29871,
+    30177,
+    19233,
+    30218,
+    19233,
+    30159
+   ],
+   "pieces": [
+    "▁",
+    "م",
+    "ر",
+    "ح",
+    "ب",
+    "ا",
+    "▁",
+    "ب",
+    "ال",
+    "ع",
+    "ال",
+    "م"
+   ],
+   "decoded": "مرحبا بالعالم",
+   "decoded_skip_special": "مرحبا بالعالم"
+  },
+  {
+   "text": "Привет, мир",
+   "ids": [
+    7203,
+    7616,
+    29892,
+    4157,
+    29927
+   ],
+   "ids_default": [
+    1,
+    7203,
+    7616,
+    29892,
+    4157,
+    29927
+   ],
+   "pieces": [
+    "▁При",
+    "вет",
+    ",",
+    "▁ми",
+    "р"
+   ],
+   "decoded": "Привет, мир",
+   "decoded_skip_special": "Привет, мир"
+  },
+  {
+   "text": "Γειά σου",
+   "ids": [
+    29871,
+    30339,
+    30151,
+    30136,
+    30216,
+    29871,
+    30164,
+    30123,
+    30192
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30339,
+    30151,
+    30136,
+    30216,
+    29871,
+    30164,
+    30123,
+    30192
+   ],
+   "pieces": [
+    "▁",
+    "Γ",
+    "ε",
+    "ι",
+    "ά",
+    "▁",
+    "σ",
+    "ο",
+    "υ"
+   ],
+   "decoded": "Γειά σου",
+   "decoded_skip_special": "Γειά σου"
+  },
+  {
+   "text": "שלום",
+   "ids": [
+    29871,
+    30294,
+    30249,
+    30205,
+    30404
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30294,
+    30249,
+    30205,
+    30404
+   ],
+   "pieces": [
+    "▁",
+    "ש",
+    "ל",
+    "ו",
+    "ם"
+   ],
+   "decoded": "שלום",
+   "decoded_skip_special": "שלום"
+  },
+  {
+   "text": "café naïve résumé",
+   "ids": [
+    274,
+    28059,
+    1055,
+    30085,
+    345,
+    6896,
+    398,
+    29948
+   ],
+   "ids_default": [
+    1,
+    274,
+    28059,
+    1055,
+    30085,
+    345,
+    6896,
+    398,
+    29948
+   ],
+   "pieces": [
+    "▁c",
+    "afé",
+    "▁na",
+    "ï",
+    "ve",
+    "▁rés",
+    "um",
+    "é"
+   ],
+   "decoded": "café naïve résumé",
+   "decoded_skip_special": "café naïve résumé"
+  },
+  {
+   "text": "Straße",
+   "ids": [
+    22667
+   ],
+   "ids_default": [
+    1,
+    22667
+   ],
+   "pieces": [
+    "▁Straße"
+   ],
+   "decoded": "Straße",
+   "decoded_skip_special": "Straße"
+  },
+  {
+   "text": "ñandú",
+   "ids": [
+    29871,
+    30046,
+    392,
+    30030
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30046,
+    392,
+    30030
+   ],
+   "pieces": [
+    "▁",
+    "ñ",
+    "and",
+    "ú"
+   ],
+   "decoded": "ñandú",
+   "decoded_skip_special": "ñandú"
+  },
+  {
+   "text": "Ångström",
+   "ids": [
+    11260,
+    865,
+    25961
+   ],
+   "ids_default": [
+    1,
+    11260,
+    865,
+    25961
+   ],
+   "pieces": [
+    "▁Å",
+    "ng",
+    "ström"
+   ],
+   "decoded": "Ångström",
+   "decoded_skip_special": "Ångström"
+  },
+  {
+   "text": "∑ x² = ∞",
+   "ids": [
+    29871,
+    31060,
+    921,
+    30088,
+    353,
+    29871,
+    30306
+   ],
+   "ids_default": [
+    1,
+    29871,
+    31060,
+    921,
+    30088,
+    353,
+    29871,
+    30306
+   ],
+   "pieces": [
+    "▁",
+    "∑",
+    "▁x",
+    "²",
+    "▁=",
+    "▁",
+    "∞"
+   ],
+   "decoded": "∑ x² = ∞",
+   "decoded_skip_special": "∑ x² = ∞"
+  },
+  {
+   "text": "α β γ δ",
+   "ids": [
+    19883,
+    29871,
+    30187,
+    29871,
+    30197,
+    29871,
+    30201
+   ],
+   "ids_default": [
+    1,
+    19883,
+    29871,
+    30187,
+    29871,
+    30197,
+    29871,
+    30201
+   ],
+   "pieces": [
+    "▁α",
+    "▁",
+    "β",
+    "▁",
+    "γ",
+    "▁",
+    "δ"
+   ],
+   "decoded": "α β γ δ",
+   "decoded_skip_special": "α β γ δ"
+  },
+  {
+   "text": "√2 ≈ 1.414",
+   "ids": [
+    29871,
+    30562,
+    29906,
+    29871,
+    30583,
+    29871,
+    29896,
+    29889,
+    29946,
+    29896,
+    29946
+   ],
+   "ids_default": [
+    1,
+    29871,
+    30562,
+    29906,
+    29871,
+    30583,
+    29871,
+    29896,
+    29889,
+    29946,
+    29896,
+    29946
+   ],
+   "pieces": [
+    "▁",
+    "√",
+    "2",
+    "▁",
+    "≈",
+    "▁",
+    "1",
+    ".",
+    "4",
+    "1",
+    "4"
+   ],
+   "decoded": "√2 ≈ 1.414",
+   "decoded_skip_special": "√2 ≈ 1.414"
+  },
+  {
+   "text": "€ £ ¥ ₹",
+   "ids": [
+    25540,
+    15151,
+    29871,
+    30563,
+    29871,
+    30620
+   ],
+   "ids_default": [
+    1,
+    25540,
+    15151,
+    29871,
+    30563,
+    29871,
+    30620
+   ],
+   "pieces": [
+    "▁€",
+    "▁£",
+    "▁",
+    "¥",
+    "▁",
+    "₹"
+   ],
+   "decoded": "€ £ ¥ ₹",
+   "decoded_skip_special": "€ £ ¥ ₹"
+  },
+  {
+   "text": "</s>",
+   "ids": [
+    2
+   ],
+   "ids_default": [
+    1,
+    2
+   ],
+   "pieces": [
+    "</s>"
+   ],
+   "decoded": "</s>",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": "<s>",
+   "ids": [
+    1
+   ],
+   "ids_default": [
+    1,
+    1
+   ],
+   "pieces": [
+    "<s>"
+   ],
+   "decoded": "<s>",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": "<unk>",
+   "ids": [
+    0
+   ],
+   "ids_default": [
+    1,
+    0
+   ],
+   "pieces": [
+    "<unk>"
+   ],
+   "decoded": "<unk>",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": "<s>Hello</s>",
+   "ids": [
+    1,
+    10994,
+    2
+   ],
+   "ids_default": [
+    1,
+    1,
+    10994,
+    2
+   ],
+   "pieces": [
+    "<s>",
+    "Hello",
+    "</s>"
+   ],
+   "decoded": "<s>Hello</s>",
+   "decoded_skip_special": "Hello"
+  },
+  {
+   "text": "Hello</s>",
+   "ids": [
+    15043,
+    2
+   ],
+   "ids_default": [
+    1,
+    15043,
+    2
+   ],
+   "pieces": [
+    "▁Hello",
+    "</s>"
+   ],
+   "decoded": "Hello</s>",
+   "decoded_skip_special": "Hello"
+  },
+  {
+   "text": "</s>\n",
+   "ids": [
+    2,
+    13
+   ],
+   "ids_default": [
+    1,
+    2,
+    13
+   ],
+   "pieces": [
+    "</s>",
+    "<0x0A>"
+   ],
+   "decoded": "</s>\n",
+   "decoded_skip_special": "\n"
+  },
+  {
+   "text": "<|user|>",
+   "ids": [
+    529,
+    29989,
+    1792,
+    29989,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "|",
+    "user",
+    "|",
+    ">"
+   ],
+   "decoded": "<|user|>",
+   "decoded_skip_special": "<|user|>"
+  },
+  {
+   "text": "<|assistant|>",
+   "ids": [
+    529,
+    29989,
+    465,
+    22137,
+    29989,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    29989,
+    465,
+    22137,
+    29989,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "|",
+    "ass",
+    "istant",
+    "|",
+    ">"
+   ],
+   "decoded": "<|assistant|>",
+   "decoded_skip_special": "<|assistant|>"
+  },
+  {
+   "text": "<|system|>",
+   "ids": [
+    529,
+    29989,
+    5205,
+    29989,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    29989,
+    5205,
+    29989,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "|",
+    "system",
+    "|",
+    ">"
+   ],
+   "decoded": "<|system|>",
+   "decoded_skip_special": "<|system|>"
+  },
+  {
+   "text": "<|user|>\nHi</s>\n<|assistant|>\n",
+   "ids": [
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    18567,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ],
+   "ids_default": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    18567,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ],
+   "pieces": [
+    "▁<",
+    "|",
+    "user",
+    "|",
+    ">",
+    "<0x0A>",
+    "Hi",
+    "</s>",
+    "<0x0A>",
+    "<",
+    "|",
+    "ass",
+    "istant",
+    "|",
+    ">",
+    "<0x0A>"
+   ],
+   "decoded": "<|user|>\nHi</s>\n<|assistant|>\n",
+   "decoded_skip_special": "<|user|>\nHi\n<|assistant|>\n"
+  },
+  {
+   "text": "<0x0A>",
+   "ids": [
+    529,
+    29900,
+    29916,
+    29900,
+    29909,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    29900,
+    29916,
+    29900,
+    29909,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "0",
+    "x",
+    "0",
+    "A",
+    ">"
+   ],
+   "decoded": "<0x0A>",
+   "decoded_skip_special": "<0x0A>"
+  },
+  {
+   "text": "▁",
+   "ids": [
+    29871
+   ],
+   "ids_default": [
+    1,
+    29871
+   ],
+   "pieces": [
+    "▁"
+   ],
+   "decoded": "",
+   "decoded_skip_special": ""
+  },
+  {
+   "text": "▁hello",
+   "ids": [
+    22172
+   ],
+   "ids_default": [
+    1,
+    22172
+   ],
+   "pieces": [
+    "▁hello"
+   ],
+   "decoded": "hello",
+   "decoded_skip_special": "hello"
+  },
+  {
+   "text": "▁▁",
+   "ids": [
+    259
+   ],
+   "ids_default": [
+    1,
+    259
+   ],
+   "pieces": [
+    "▁▁"
+   ],
+   "decoded": " ",
+   "decoded_skip_special": " "
+  },
+  {
+   "text": "<pad>",
+   "ids": [
+    529,
+    8305,
+    29958
+   ],
+   "ids_default": [
+    1,
+    529,
+    8305,
+    29958
+   ],
+   "pieces": [
+    "▁<",
+    "pad",
+    ">"
+   ],
+   "decoded": "<pad>",
+   "decoded_skip_special": "<pad>"
+  },
+  {
+   "text": "[INST]",
+   "ids": [
+    518,
+    25580,
+    29962
+   ],
+   "ids_default": [
+    1,
+    518,
+    25580,
+    29962
+   ],
+   "pieces": [
+    "▁[",
+    "INST",
+    "]"
+   ],
+   "decoded": "[INST]",
+   "decoded_skip_special": "[INST]"
+  },
+  {
+   "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "ids": [
+    263,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    7340,
+    29874
+   ],
+   "ids_default": [
+    1,
+    263,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    27137,
+    7340,
+    29874
+   ],
+   "pieces": [
+    "▁a",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aaaa",
+    "aa",
+    "a"
+   ],
+   "decoded": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "decoded_skip_special": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "text": "the the the the the",
+   "ids": [
+    278,
+    278,
+    278,
+    278,
+    278
+   ],
+   "ids_default": [
+    1,
+    278,
+    278,
+    278,
+    278,
+    278
+   ],
+   "pieces": [
+    "▁the",
+    "▁the",
+    "▁the",
+    "▁the",
+    "▁the"
+   ],
+   "decoded": "the the the the the",
+   "decoded_skip_special": "the the the the the"
+  },
+  {
+   "text": "ababababab",
+   "ids": [
+    633,
+    370,
+    370,
+    370,
+    370
+   ],
+   "ids_default": [
+    1,
+    633,
+    370,
+    370,
+    370,
+    370
+   ],
+   "pieces": [
+    "▁ab",
+    "ab",
+    "ab",
+    "ab",
+    "ab"
+   ],
+   "decoded": "ababababab",
+   "decoded_skip_special": "ababababab"
+  },
+  {
+   "text": "..........",
+   "ids": [
+    29871,
+    11296,
+    636
+   ],
+   "ids_default": [
+    1,
+    29871,
+    11296,
+    636
+   ],
+   "pieces": [
+    "▁",
+    "........",
+    ".."
+   ],
+   "decoded": "..........",
+   "decoded_skip_special": ".........."
+  },
+  {
+   "text": "----------",
+   "ids": [
+    448,
+    1378,
+    29899
+   ],
+   "ids_default": [
+    1,
+    448,
+    1378,
+    29899
+   ],
+   "pieces": [
+    "▁-",
+    "--------",
+    "-"
+   ],
+   "decoded": "----------",
+   "decoded_skip_special": "----------"
+  },
+  {
+   "text": "!!!",
+   "ids": [
+    1738,
+    6824
+   ],
+   "ids_default": [
+    1,
+    1738,
+    6824
+   ],
+   "pieces": [
+    "▁!",
+    "!!"
+   ],
+   "decoded": "!!!",
+   "decoded_skip_special": "!!!"
+  },
+  {
+   "text": "???",
+   "ids": [
+    1577,
+    8773
+   ],
+   "ids_default": [
+    1,
+    1577,
+    8773
+   ],
+   "pieces": [
+    "▁?",
+    "??"
+   ],
+   "decoded": "???",
+   "decoded_skip_special": "???"
+  },
+  {
+   "text": "Mr. Smith's dog's bone",
+   "ids": [
+    3237,
+    29889,
+    7075,
+    29915,
+    29879,
+    11203,
+    29915,
+    29879,
+    289,
+    650
+   ],
+   "ids_default": [
+    1,
+    3237,
+    29889,
+    7075,
+    29915,
+    29879,
+    11203,
+    29915,
+    29879,
+    289,
+    650
+   ],
+   "pieces": [
+    "▁Mr",
+    ".",
+    "▁Smith",
+    "'",
+    "s",
+    "▁dog",
+    "'",
+    "s",
+    "▁b",
+    "one"
+   ],
+   "decoded": "Mr. Smith's dog's bone",
+   "decoded_skip_special": "Mr. Smith's dog's bone"
+  },
+  {
+   "text": "don't won't can't",
+   "ids": [
+    1016,
+    29915,
+    29873,
+    2113,
+    29915,
+    29873,
+    508,
+    29915,
+    29873
+   ],
+   "ids_default": [
+    1,
+    1016,
+    29915,
+    29873,
+    2113,
+    29915,
+    29873,
+    508,
+    29915,
+    29873
+   ],
+   "pieces": [
+    "▁don",
+    "'",
+    "t",
+    "▁won",
+    "'",
+    "t",
+    "▁can",
+    "'",
+    "t"
+   ],
+   "decoded": "don't won't can't",
+   "decoded_skip_special": "don't won't can't"
+  },
+  {
+   "text": "U.S.A.",
+   "ids": [
+    501,
+    29889,
+    29903,
+    29889,
+    29909,
+    29889
+   ],
+   "ids_default": [
+    1,
+    501,
+    29889,
+    29903,
+    29889,
+    29909,
+    29889
+   ],
+   "pieces": [
+    "▁U",
+    ".",
+    "S",
+    ".",
+    "A",
+    "."
+   ],
+   "decoded": "U.S.A.",
+   "decoded_skip_special": "U.S.A."
+  },
+  {
+   "text": "e.g. i.e. etc.",
+   "ids": [
+    321,
+    29889,
+    29887,
+    29889,
+    474,
+    29889,
+    29872,
+    29889,
+    2992,
+    29889
+   ],
+   "ids_default": [
+    1,
+    321,
+    29889,
+    29887,
+    29889,
+    474,
+    29889,
+    29872,
+    29889,
+    2992,
+    29889
+   ],
+   "pieces": [
+    "▁e",
+    ".",
+    "g",
+    ".",
+    "▁i",
+    ".",
+    "e",
+    ".",
+    "▁etc",
+    "."
+   ],
+   "decoded": "e.g. i.e. etc.",
+   "decoded_skip_special": "e.g. i.e. etc."
+  },
+  {
+   "text": "CamelCaseIdentifier",
+   "ids": [
+    5500,
+    295,
+    8259,
+    12889
+   ],
+   "ids_default": [
+    1,
+    5500,
+    295,
+    8259,
+    12889
+   ],
+   "pieces": [
+    "▁Cam",
+    "el",
+    "Case",
+    "Identifier"
+   ],
+   "decoded": "CamelCaseIdentifier",
+   "decoded_skip_special": "CamelCaseIdentifier"
+  },
+  {
+   "text": "snake_case_identifier",
+   "ids": [
+    269,
+    21040,
+    29918,
+    4878,
+    29918,
+    25378
+   ],
+   "ids_default": [
+    1,
+    269,
+    21040,
+    29918,
+    4878,
+    29918,
+    25378
+   ],
+   "pieces": [
+    "▁s",
+    "nake",
+    "_",
+    "case",
+    "_",
+    "identifier"
+   ],
+   "decoded": "snake_case_identifier",
+   "decoded_skip_special": "snake_case_identifier"
+  },
+  {
+   "text": "SCREAMING_CASE",
+   "ids": [
+    12314,
+    1525,
+    5194,
+    4214,
+    29918,
+    23487
+   ],
+   "ids_default": [
+    1,
+    12314,
+    1525,
+    5194,
+    4214,
+    29918,
+    23487
+   ],
+   "pieces": [
+    "▁SC",
+    "RE",
+    "AM",
+    "ING",
+    "_",
+    "CASE"
+   ],
+   "decoded": "SCREAMING_CASE",
+   "decoded_skip_special": "SCREAMING_CASE"
+  },
+  {
+   "text": "ALLCAPS",
+   "ids": [
+    15149,
+    29907,
+    3301,
+    29903
+   ],
+   "ids_default": [
+    1,
+    15149,
+    29907,
+    3301,
+    29903
+   ],
+   "pieces": [
+    "▁ALL",
+    "C",
+    "AP",
+    "S"
+   ],
+   "decoded": "ALLCAPS",
+   "decoded_skip_special": "ALLCAPS"
+  },
+  {
+   "text": "MiXeD cAsE",
+   "ids": [
+    5493,
+    29990,
+    29872,
+    29928,
+    274,
+    2887,
+    29923
+   ],
+   "ids_default": [
+    1,
+    5493,
+    29990,
+    29872,
+    29928,
+    274,
+    2887,
+    29923
+   ],
+   "pieces": [
+    "▁Mi",
+    "X",
+    "e",
+    "D",
+    "▁c",
+    "As",
+    "E"
+   ],
+   "decoded": "MiXeD cAsE",
+   "decoded_skip_special": "MiXeD cAsE"
+  },
+  {
+   "text": "TinyLlama",
+   "ids": [
+    323,
+    4901,
+    29931,
+    29880,
+    3304
+   ],
+   "ids_default": [
+    1,
+    323,
+    4901,
+    29931,
+    29880,
+    3304
+   ],
+   "pieces": [
+    "▁T",
+    "iny",
+    "L",
+    "l",
+    "ama"
+   ],
+   "decoded": "TinyLlama",
+   "decoded_skip_special": "TinyLlama"
+  },
+  {
+   "text": "EdgeForge",
+   "ids": [
+    21086,
+    2831,
+    479
+   ],
+   "ids_default": [
+    1,
+    21086,
+    2831,
+    479
+   ],
+   "pieces": [
+    "▁Edge",
+    "For",
+    "ge"
+   ],
+   "decoded": "EdgeForge",
+   "decoded_skip_special": "EdgeForge"
+  },
+  {
+   "text": "BIT Mesra",
+   "ids": [
+    350,
+    1806,
+    16457,
+    336
+   ],
+   "ids_default": [
+    1,
+    350,
+    1806,
+    16457,
+    336
+   ],
+   "pieces": [
+    "▁B",
+    "IT",
+    "▁Mes",
+    "ra"
+   ],
+   "decoded": "BIT Mesra",
+   "decoded_skip_special": "BIT Mesra"
+  },
+  {
+   "text": "Thapar",
+   "ids": [
+    498,
+    481,
+    279
+   ],
+   "ids_default": [
+    1,
+    498,
+    481,
+    279
+   ],
+   "pieces": [
+    "▁Th",
+    "ap",
+    "ar"
+   ],
+   "decoded": "Thapar",
+   "decoded_skip_special": "Thapar"
+  },
+  {
+   "text": "Ranchi",
+   "ids": [
+    22392,
+    4161
+   ],
+   "ids_default": [
+    1,
+    22392,
+    4161
+   ],
+   "pieces": [
+    "▁Ran",
+    "chi"
+   ],
+   "decoded": "Ranchi",
+   "decoded_skip_special": "Ranchi"
+  },
+  {
+   "text": "quantization",
+   "ids": [
+    4323,
+    2133
+   ],
+   "ids_default": [
+    1,
+    4323,
+    2133
+   ],
+   "pieces": [
+    "▁quant",
+    "ization"
+   ],
+   "decoded": "quantization",
+   "decoded_skip_special": "quantization"
+  },
+  {
+   "text": "dequantise",
+   "ids": [
+    316,
+    12150,
+    895
+   ],
+   "ids_default": [
+    1,
+    316,
+    12150,
+    895
+   ],
+   "pieces": [
+    "▁de",
+    "quant",
+    "ise"
+   ],
+   "decoded": "dequantise",
+   "decoded_skip_special": "dequantise"
+  },
+  {
+   "text": "The quick brown fox jumps over the lazy dog.",
+   "ids": [
+    450,
+    4996,
+    17354,
+    1701,
+    29916,
+    432,
+    17204,
+    975,
+    278,
+    17366,
+    11203,
+    29889
+   ],
+   "ids_default": [
+    1,
+    450,
+    4996,
+    17354,
+    1701,
+    29916,
+    432,
+    17204,
+    975,
+    278,
+    17366,
+    11203,
+    29889
+   ],
+   "pieces": [
+    "▁The",
+    "▁quick",
+    "▁brown",
+    "▁fo",
+    "x",
+    "▁j",
+    "umps",
+    "▁over",
+    "▁the",
+    "▁lazy",
+    "▁dog",
+    "."
+   ],
+   "decoded": "The quick brown fox jumps over the lazy dog.",
+   "decoded_skip_special": "The quick brown fox jumps over the lazy dog."
+  },
+  {
+   "text": "\u0007bell",
+   "ids": [
+    29871,
+    10,
+    12562
+   ],
+   "ids_default": [
+    1,
+    29871,
+    10,
+    12562
+   ],
+   "pieces": [
+    "▁",
+    "<0x07>",
+    "bell"
+   ],
+   "decoded": "\u0007bell",
+   "decoded_skip_special": "\u0007bell"
+  },
+  {
+   "text": "zero\u0000byte",
+   "ids": [
+    5225,
+    3,
+    10389
+   ],
+   "ids_default": [
+    1,
+    5225,
+    3,
+    10389
+   ],
+   "pieces": [
+    "▁zero",
+    "<0x00>",
+    "byte"
+   ],
+   "decoded": "zero\u0000byte",
+   "decoded_skip_special": "zero\u0000byte"
+  },
+  {
+   "text": "Once upon a time, there was a little robot who wanted to learn how to paint.",
+   "ids": [
+    9038,
+    2501,
+    263,
+    931,
+    29892,
+    727,
+    471,
+    263,
+    2217,
+    19964,
+    1058,
+    5131,
+    304,
+    5110,
+    920,
+    304,
+    10675,
+    29889
+   ],
+   "ids_default": [
+    1,
+    9038,
+    2501,
+    263,
+    931,
+    29892,
+    727,
+    471,
+    263,
+    2217,
+    19964,
+    1058,
+    5131,
+    304,
+    5110,
+    920,
+    304,
+    10675,
+    29889
+   ],
+   "pieces": [
+    "▁Once",
+    "▁upon",
+    "▁a",
+    "▁time",
+    ",",
+    "▁there",
+    "▁was",
+    "▁a",
+    "▁little",
+    "▁robot",
+    "▁who",
+    "▁wanted",
+    "▁to",
+    "▁learn",
+    "▁how",
+    "▁to",
+    "▁paint",
+    "."
+   ],
+   "decoded": "Once upon a time, there was a little robot who wanted to learn how to paint.",
+   "decoded_skip_special": "Once upon a time, there was a little robot who wanted to learn how to paint."
+  }
+ ]
+}

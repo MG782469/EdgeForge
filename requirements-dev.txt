@@ -1,0 +1,9 @@
+# Development-only tools (golden reference generation). NOT used by the C++ runtime.
+# Install CPU-only PyTorch first (much smaller than the CUDA build):
+#   python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   python -m pip install -r requirements-dev.txt
+transformers>=4.36
+safetensors>=0.4
+numpy>=1.24
+huggingface_hub>=0.23
+psutil>=5.9

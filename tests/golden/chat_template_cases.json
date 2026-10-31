@@ -1,0 +1,412 @@
+{
+ "format": "edgeforge-golden-v1",
+ "chat_template": "{% for message in messages %}\n{% if message['role'] == 'user' %}\n{{ '<|user|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'system' %}\n{{ '<|system|>\n' + message['content'] + eos_token }}\n{% elif message['role'] == 'assistant' %}\n{{ '<|assistant|>\n'  + message['content'] + eos_token }}\n{% endif %}\n{% if loop.last and add_generation_prompt %}\n{{ '<|assistant|>' }}\n{% endif %}\n{% endfor %}",
+ "cases": [
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": true,
+   "text": "<|user|>\nHi</s>\n<|assistant|>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    18567,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hi"
+    }
+   ],
+   "add_generation_prompt": false,
+   "text": "<|user|>\nHi</s>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    18567,
+    2,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is 2+2?"
+    }
+   ],
+   "add_generation_prompt": true,
+   "text": "<|system|>\nYou are a helpful assistant.</s>\n<|user|>\nWhat is 2+2?</s>\n<|assistant|>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    5205,
+    29989,
+    29958,
+    13,
+    3492,
+    526,
+    263,
+    8444,
+    20255,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    5618,
+    338,
+    29871,
+    29906,
+    29974,
+    29906,
+    29973,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "What is 2+2?"
+    }
+   ],
+   "add_generation_prompt": false,
+   "text": "<|system|>\nYou are a helpful assistant.</s>\n<|user|>\nWhat is 2+2?</s>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    5205,
+    29989,
+    29958,
+    13,
+    3492,
+    526,
+    263,
+    8444,
+    20255,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    5618,
+    338,
+    29871,
+    29906,
+    29974,
+    29906,
+    29973,
+    2,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Name a fruit."
+    },
+    {
+     "role": "assistant",
+     "content": "Apple."
+    },
+    {
+     "role": "user",
+     "content": "Another one?"
+    }
+   ],
+   "add_generation_prompt": true,
+   "text": "<|user|>\nName a fruit.</s>\n<|assistant|>\nApple.</s>\n<|user|>\nAnother one?</s>\n<|assistant|>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    1170,
+    263,
+    15774,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13,
+    2052,
+    280,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    2744,
+    1228,
+    697,
+    29973,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "Name a fruit."
+    },
+    {
+     "role": "assistant",
+     "content": "Apple."
+    },
+    {
+     "role": "user",
+     "content": "Another one?"
+    }
+   ],
+   "add_generation_prompt": false,
+   "text": "<|user|>\nName a fruit.</s>\n<|assistant|>\nApple.</s>\n<|user|>\nAnother one?</s>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    1170,
+    263,
+    15774,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13,
+    2052,
+    280,
+    29889,
+    2,
+    13,
+    29966,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    2744,
+    1228,
+    697,
+    29973,
+    2,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "  leading spaces and trailing  "
+    }
+   ],
+   "add_generation_prompt": true,
+   "text": "<|user|>\n  leading spaces and trailing  </s>\n<|assistant|>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    29871,
+    8236,
+    8162,
+    322,
+    25053,
+    259,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "  leading spaces and trailing  "
+    }
+   ],
+   "add_generation_prompt": false,
+   "text": "<|user|>\n  leading spaces and trailing  </s>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    29871,
+    8236,
+    8162,
+    322,
+    25053,
+    259,
+    2,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "नमस्ते! 😀"
+    }
+   ],
+   "add_generation_prompt": true,
+   "text": "<|user|>\nनमस्ते! 😀</s>\n<|assistant|>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569,
+    29991,
+    29871,
+    243,
+    162,
+    155,
+    131,
+    2,
+    13,
+    29966,
+    29989,
+    465,
+    22137,
+    29989,
+    29958,
+    13
+   ]
+  },
+  {
+   "messages": [
+    {
+     "role": "user",
+     "content": "नमस्ते! 😀"
+    }
+   ],
+   "add_generation_prompt": false,
+   "text": "<|user|>\nनमस्ते! 😀</s>\n",
+   "ids": [
+    1,
+    529,
+    29989,
+    1792,
+    29989,
+    29958,
+    13,
+    30424,
+    30485,
+    30489,
+    30296,
+    30475,
+    30569,
+    29991,
+    29871,
+    243,
+    162,
+    155,
+    131,
+    2,
+    13
+   ]
+  }
+ ],
+ "note": "ids = BOS + tokenised text (add_special_tokens=True); the template itself adds no BOS"
+}

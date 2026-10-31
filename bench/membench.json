@@ -1,0 +1,16 @@
+{
+  "tool": "edgeforge membench",
+  "version": "0.1.0 (stage 1)",
+  "system": {"cpu": "AMD Ryzen 5 7530U with Radeon Graphics", "physical_cores": 6, "logical_cpus": 12, "total_ram_bytes": 7963717632, "os": "Linux 6.18.54.1-microsoft-standard-WSL2", "features": "SSE4.2 AVX AVX2 FMA F16C", "compiler": "gcc 15.2.0", "build_type": "Release", "build_flags": "-O3 -DNDEBUG -march=native"},
+  "setup": {"buffer_bytes": 1073741824, "runs": 5, "passes": 3, "warmup_runs": 1},
+  "results": [
+    {"threads": 1, "best_gbps": 17.9256, "median_gbps": 16.8678, "worst_gbps": 16.0722, "checksum_ok": true, "run_gbps": [16.0722, 16.8678, 17.1228, 17.9256, 16.7552]},
+    {"threads": 2, "best_gbps": 18.9743, "median_gbps": 18.7984, "worst_gbps": 16.5528, "checksum_ok": true, "run_gbps": [16.5528, 18.7984, 18.8493, 16.6042, 18.9743]},
+    {"threads": 4, "best_gbps": 17.2399, "median_gbps": 16.5469, "worst_gbps": 14.6917, "checksum_ok": true, "run_gbps": [17.2399, 14.6917, 15.5307, 16.5469, 17.1058]},
+    {"threads": 6, "best_gbps": 16.6731, "median_gbps": 15.8278, "worst_gbps": 15.6860, "checksum_ok": true, "run_gbps": [16.1057, 15.8278, 15.6860, 15.7190, 16.6731]},
+    {"threads": 8, "best_gbps": 18.0086, "median_gbps": 17.6544, "worst_gbps": 17.5319, "checksum_ok": true, "run_gbps": [17.7144, 17.6490, 17.6544, 17.5319, 18.0086]},
+    {"threads": 12, "best_gbps": 17.7897, "median_gbps": 17.4395, "worst_gbps": 16.4733, "checksum_ok": true, "run_gbps": [17.4395, 17.7897, 17.6667, 16.5833, 16.4733]}
+  ],
+  "peak_median_gbps": 18.7984,
+  "peak_threads": 2
+}

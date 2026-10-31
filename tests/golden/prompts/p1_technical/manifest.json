@@ -1,0 +1,335 @@
+{
+ "format": "edgeforge-golden-v1",
+ "name": "p1_technical",
+ "prompt": "Explain in two sentences how a CPU cache makes programs faster.",
+ "formatted": "<|user|>\nExplain in two sentences how a CPU cache makes programs faster.</s>\n<|assistant|>\n",
+ "add_special_tokens": true,
+ "input_ids": [
+  1,
+  529,
+  29989,
+  1792,
+  29989,
+  29958,
+  13,
+  9544,
+  7420,
+  297,
+  1023,
+  25260,
+  920,
+  263,
+  10808,
+  7090,
+  3732,
+  11104,
+  8473,
+  29889,
+  2,
+  13,
+  29966,
+  29989,
+  465,
+  22137,
+  29989,
+  29958,
+  13
+ ],
+ "n_tokens": 29,
+ "detail": false,
+ "files": {
+  "input_ids": {
+   "file": "input_ids.i32",
+   "dtype": "i32",
+   "shape": [
+    29
+   ],
+   "description": "prompt token ids (BOS + chat template)"
+  },
+  "embed_last": {
+   "file": "embed_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "token embedding at the last position"
+  },
+  "hidden_last": {
+   "file": "hidden_last.f32",
+   "dtype": "f32",
+   "shape": [
+    22,
+    2048
+   ],
+   "description": "[layer, D] decoder-layer outputs, last position"
+  },
+  "final_norm_last": {
+   "file": "final_norm_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "final RMSNorm output, last position"
+  },
+  "logits_last": {
+   "file": "logits_last.f32",
+   "dtype": "f32",
+   "shape": [
+    32000
+   ],
+   "description": "next-token logits after the prompt"
+  },
+  "decode_logits": {
+   "file": "decode_logits.f32",
+   "dtype": "f32",
+   "shape": [
+    2,
+    32000
+   ],
+   "description": "[n, V] logits after feeding greedy tokens 1..n through the KV cache"
+  }
+ },
+ "greedy": {
+  "ids": [
+   29909,
+   10808,
+   7090,
+   29892,
+   884,
+   2998,
+   408,
+   263
+  ],
+  "text": "A CPU cache, also known as a",
+  "text_with_special": "A CPU cache, also known as a",
+  "stopped_on_eos": false,
+  "max_new_tokens": 8,
+  "steps": [
+   {
+    "step": 0,
+    "token": 29909,
+    "piece": "A",
+    "top5": [
+     [
+      29909,
+      19.23897361755371
+     ],
+     [
+      1576,
+      15.224616050720215
+     ],
+     [
+      797,
+      15.049633979797363
+     ],
+     [
+      6271,
+      14.275148391723633
+     ],
+     [
+      29907,
+      14.08788776397705
+     ]
+    ],
+    "margin_top1_top2": 4.014357566833496
+   },
+   {
+    "step": 1,
+    "token": 10808,
+    "piece": "▁CPU",
+    "top5": [
+     [
+      10808,
+      18.70037078857422
+     ],
+     [
+      7090,
+      15.612249374389648
+     ],
+     [
+      28540,
+      13.984354019165039
+     ],
+     [
+      6601,
+      13.041312217712402
+     ],
+     [
+      21433,
+      11.549625396728516
+     ]
+    ],
+    "margin_top1_top2": 3.0881214141845703
+   },
+   {
+    "step": 2,
+    "token": 7090,
+    "piece": "▁cache",
+    "top5": [
+     [
+      7090,
+      20.978042602539062
+     ],
+     [
+      313,
+      16.462955474853516
+     ],
+     [
+      28540,
+      16.039152145385742
+     ],
+     [
+      315,
+      13.049962997436523
+     ],
+     [
+      274,
+      12.427411079406738
+     ]
+    ],
+    "margin_top1_top2": 4.515087127685547
+   },
+   {
+    "step": 3,
+    "token": 29892,
+    "piece": ",",
+    "top5": [
+     [
+      29892,
+      15.100377082824707
+     ],
+     [
+      338,
+      14.70041561126709
+     ],
+     [
+      313,
+      14.369563102722168
+     ],
+     [
+      3732,
+      14.24964427947998
+     ],
+     [
+      470,
+      12.8406343460083
+     ]
+    ],
+    "margin_top1_top2": 0.3999614715576172
+   },
+   {
+    "step": 4,
+    "token": 884,
+    "piece": "▁also",
+    "top5": [
+     [
+      884,
+      18.611988067626953
+     ],
+     [
+      470,
+      17.003446578979492
+     ],
+     [
+      3273,
+      14.954439163208008
+     ],
+     [
+      15574,
+      14.16541862487793
+     ],
+     [
+      607,
+      14.090328216552734
+     ]
+    ],
+    "margin_top1_top2": 1.608541488647461
+   },
+   {
+    "step": 5,
+    "token": 2998,
+    "piece": "▁known",
+    "top5": [
+     [
+      2998,
+      23.03925895690918
+     ],
+     [
+      2000,
+      20.18695068359375
+     ],
+     [
+      12992,
+      19.29999542236328
+     ],
+     [
+      15574,
+      16.70464515686035
+     ],
+     [
+      6041,
+      15.745180130004883
+     ]
+    ],
+    "margin_top1_top2": 2.8523082733154297
+   },
+   {
+    "step": 6,
+    "token": 408,
+    "piece": "▁as",
+    "top5": [
+     [
+      408,
+      22.136661529541016
+     ],
+     [
+      491,
+      13.600407600402832
+     ],
+     [
+      3763,
+      12.137860298156738
+     ],
+     [
+      15574,
+      11.628097534179688
+     ],
+     [
+      263,
+      10.770297050476074
+     ]
+    ],
+    "margin_top1_top2": 8.536253929138184
+   },
+   {
+    "step": 7,
+    "token": 263,
+    "piece": "▁a",
+    "top5": [
+     [
+      263,
+      14.580095291137695
+     ],
+     [
+      278,
+      13.779544830322266
+     ],
+     [
+      385,
+      11.71687126159668
+     ],
+     [
+      7090,
+      10.88418960571289
+     ],
+     [
+      365,
+      10.72134017944336
+     ]
+    ],
+    "margin_top1_top2": 0.8005504608154297
+   }
+  ]
+ },
+ "attention_self_check": null
+}

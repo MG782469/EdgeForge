@@ -1,0 +1,22 @@
+# build outputs
+build/
+build-*/
+cmake-build-*/
+out/
+
+# model weights never go into git (2.2 GB) - keep them outside OneDrive too
+models/
+*.safetensors
+*.gguf
+*.bin
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,334 @@
+{
+ "format": "edgeforge-golden-v1",
+ "name": "p2_code",
+ "prompt": "Write a Python function that checks whether a number is prime.",
+ "formatted": "<|user|>\nWrite a Python function that checks whether a number is prime.</s>\n<|assistant|>\n",
+ "add_special_tokens": true,
+ "input_ids": [
+  1,
+  529,
+  29989,
+  1792,
+  29989,
+  29958,
+  13,
+  6113,
+  263,
+  5132,
+  740,
+  393,
+  12747,
+  3692,
+  263,
+  1353,
+  338,
+  6019,
+  29889,
+  2,
+  13,
+  29966,
+  29989,
+  465,
+  22137,
+  29989,
+  29958,
+  13
+ ],
+ "n_tokens": 28,
+ "detail": false,
+ "files": {
+  "input_ids": {
+   "file": "input_ids.i32",
+   "dtype": "i32",
+   "shape": [
+    28
+   ],
+   "description": "prompt token ids (BOS + chat template)"
+  },
+  "embed_last": {
+   "file": "embed_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "token embedding at the last position"
+  },
+  "hidden_last": {
+   "file": "hidden_last.f32",
+   "dtype": "f32",
+   "shape": [
+    22,
+    2048
+   ],
+   "description": "[layer, D] decoder-layer outputs, last position"
+  },
+  "final_norm_last": {
+   "file": "final_norm_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "final RMSNorm output, last position"
+  },
+  "logits_last": {
+   "file": "logits_last.f32",
+   "dtype": "f32",
+   "shape": [
+    32000
+   ],
+   "description": "next-token logits after the prompt"
+  },
+  "decode_logits": {
+   "file": "decode_logits.f32",
+   "dtype": "f32",
+   "shape": [
+    2,
+    32000
+   ],
+   "description": "[n, V] logits after feeding greedy tokens 1..n through the KV cache"
+  }
+ },
+ "greedy": {
+  "ids": [
+   10605,
+   29915,
+   29879,
+   263,
+   5132,
+   740,
+   393,
+   12747
+  ],
+  "text": "Here's a Python function that checks",
+  "text_with_special": "Here's a Python function that checks",
+  "stopped_on_eos": false,
+  "max_new_tokens": 8,
+  "steps": [
+   {
+    "step": 0,
+    "token": 10605,
+    "piece": "Here",
+    "top5": [
+     [
+      10605,
+      16.36981773376465
+     ],
+     [
+      28956,
+      14.71585464477539
+     ],
+     [
+      29902,
+      14.418181419372559
+     ],
+     [
+      8241,
+      13.909894943237305
+     ],
+     [
+      29903,
+      13.660663604736328
+     ]
+    ],
+    "margin_top1_top2": 1.6539630889892578
+   },
+   {
+    "step": 1,
+    "token": 29915,
+    "piece": "'",
+    "top5": [
+     [
+      29915,
+      22.24899673461914
+     ],
+     [
+      338,
+      20.26101303100586
+     ],
+     [
+      30010,
+      16.244304656982422
+     ],
+     [
+      366,
+      12.756579399108887
+     ],
+     [
+      526,
+      12.70914363861084
+     ]
+    ],
+    "margin_top1_top2": 1.9879837036132812
+   },
+   {
+    "step": 2,
+    "token": 29879,
+    "piece": "s",
+    "top5": [
+     [
+      29879,
+      26.411964416503906
+     ],
+     [
+      276,
+      11.768051147460938
+     ],
+     [
+      338,
+      11.645927429199219
+     ],
+     [
+      269,
+      11.275676727294922
+     ],
+     [
+      4977,
+      10.229129791259766
+     ]
+    ],
+    "margin_top1_top2": 14.643913269042969
+   },
+   {
+    "step": 3,
+    "token": 263,
+    "piece": "▁a",
+    "top5": [
+     [
+      263,
+      21.463735580444336
+     ],
+     [
+      385,
+      18.2353572845459
+     ],
+     [
+      697,
+      17.803672790527344
+     ],
+     [
+      278,
+      16.392215728759766
+     ],
+     [
+      920,
+      15.569520950317383
+     ]
+    ],
+    "margin_top1_top2": 3.2283782958984375
+   },
+   {
+    "step": 4,
+    "token": 5132,
+    "piece": "▁Python",
+    "top5": [
+     [
+      5132,
+      16.384586334228516
+     ],
+     [
+      2560,
+      13.616743087768555
+     ],
+     [
+      740,
+      13.579912185668945
+     ],
+     [
+      1950,
+      13.339469909667969
+     ],
+     [
+      6996,
+      12.038848876953125
+     ]
+    ],
+    "margin_top1_top2": 2.767843246459961
+   },
+   {
+    "step": 5,
+    "token": 740,
+    "piece": "▁function",
+    "top5": [
+     [
+      740,
+      19.55834197998047
+     ],
+     [
+      29871,
+      13.402473449707031
+     ],
+     [
+      5314,
+      12.661420822143555
+     ],
+     [
+      1824,
+      12.655543327331543
+     ],
+     [
+      775,
+      12.001757621765137
+     ]
+    ],
+    "margin_top1_top2": 6.1558685302734375
+   },
+   {
+    "step": 6,
+    "token": 393,
+    "piece": "▁that",
+    "top5": [
+     [
+      393,
+      17.570222854614258
+     ],
+     [
+      304,
+      15.010367393493652
+     ],
+     [
+      363,
+      14.058544158935547
+     ],
+     [
+      366,
+      12.975028991699219
+     ],
+     [
+      2000,
+      12.32336711883545
+     ]
+    ],
+    "margin_top1_top2": 2.5598554611206055
+   },
+   {
+    "step": 7,
+    "token": 12747,
+    "piece": "▁checks",
+    "top5": [
+     [
+      12747,
+      17.210926055908203
+     ],
+     [
+      10703,
+      13.553792953491211
+     ],
+     [
+      4893,
+      13.236427307128906
+     ],
+     [
+      947,
+      13.218698501586914
+     ],
+     [
+      3639,
+      12.254592895507812
+     ]
+    ],
+    "margin_top1_top2": 3.657133102416992
+   }
+  ]
+ },
+ "attention_self_check": null
+}

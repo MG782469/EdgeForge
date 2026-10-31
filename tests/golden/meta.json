@@ -1,0 +1,60 @@
+{
+ "format": "edgeforge-golden-v1",
+ "created_utc": "2026-10-31T16:10:04+00:00",
+ "model_dir": "/home/manas/edgeforge-data/tinyllama",
+ "model_safetensors_sha256": "6e6001da2106d4757498752a021df6c2bdc332c650aae4bae6b0c004dcf14933",
+ "config_sha256": "486bedda3a6988332e60d9638a09ca4b260d34ebcf1b19e22cf3b140b63d8fe9",
+ "reference_dtype": "float32",
+ "attn_implementation": "eager",
+ "versions": {
+  "python": "3.14.4",
+  "torch": "2.15.0+cpu",
+  "transformers": "5.22.1",
+  "safetensors": "0.8.0",
+  "numpy": "2.5.4"
+ },
+ "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+ "processor": "",
+ "torch_threads": 4,
+ "config": {
+  "architectures": [
+   "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "bos_token_id": 1,
+  "eos_token_id": 2,
+  "hidden_act": "silu",
+  "hidden_size": 2048,
+  "initializer_range": 0.02,
+  "intermediate_size": 5632,
+  "max_position_embeddings": 2048,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 22,
+  "num_key_value_heads": 4,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-05,
+  "rope_scaling": null,
+  "rope_theta": 10000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.35.0",
+  "use_cache": true,
+  "vocab_size": 32000
+ },
+ "prompts": [
+  "p0_factual",
+  "p1_technical",
+  "p2_code",
+  "p3_hindi"
+ ],
+ "detail_prompt": "p0_factual",
+ "attention_self_check": {
+  "max_abs_diff": 6.722848602813691e-08,
+  "max_abs_ref": 0.2327454388141632,
+  "tolerance": 0.001,
+  "passed": true,
+  "adjacent_pair_rope_diff": 0.21085854071646679
+ },
+ "binary_format": "raw little-endian, C order; *.f32 = float32, *.i32 = int32; shapes in each manifest.json"
+}

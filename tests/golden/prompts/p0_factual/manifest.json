@@ -1,0 +1,525 @@
+{
+ "format": "edgeforge-golden-v1",
+ "name": "p0_factual",
+ "prompt": "What is the capital of France?",
+ "formatted": "<|user|>\nWhat is the capital of France?</s>\n<|assistant|>\n",
+ "add_special_tokens": true,
+ "input_ids": [
+  1,
+  529,
+  29989,
+  1792,
+  29989,
+  29958,
+  13,
+  5618,
+  338,
+  278,
+  7483,
+  310,
+  3444,
+  29973,
+  2,
+  13,
+  29966,
+  29989,
+  465,
+  22137,
+  29989,
+  29958,
+  13
+ ],
+ "n_tokens": 23,
+ "detail": true,
+ "files": {
+  "input_ids": {
+   "file": "input_ids.i32",
+   "dtype": "i32",
+   "shape": [
+    23
+   ],
+   "description": "prompt token ids (BOS + chat template)"
+  },
+  "embed_last": {
+   "file": "embed_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "token embedding at the last position"
+  },
+  "hidden_last": {
+   "file": "hidden_last.f32",
+   "dtype": "f32",
+   "shape": [
+    22,
+    2048
+   ],
+   "description": "[layer, D] decoder-layer outputs, last position"
+  },
+  "final_norm_last": {
+   "file": "final_norm_last.f32",
+   "dtype": "f32",
+   "shape": [
+    2048
+   ],
+   "description": "final RMSNorm output, last position"
+  },
+  "logits_last": {
+   "file": "logits_last.f32",
+   "dtype": "f32",
+   "shape": [
+    32000
+   ],
+   "description": "next-token logits after the prompt"
+  },
+  "embed_all": {
+   "file": "embed_all.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] token embeddings"
+  },
+  "hidden_all": {
+   "file": "hidden_all.f32",
+   "dtype": "f32",
+   "shape": [
+    22,
+    23,
+    2048
+   ],
+   "description": "[layer, S, D] decoder-layer outputs, all positions"
+  },
+  "final_norm_all": {
+   "file": "final_norm_all.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] final RMSNorm output"
+  },
+  "logits_all": {
+   "file": "logits_all.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    32000
+   ],
+   "description": "[S, V] logits at every prompt position"
+  },
+  "rope_cos": {
+   "file": "rope_cos.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    64
+   ],
+   "description": "[S, head_dim] RoPE cos table (half-split convention)"
+  },
+  "rope_sin": {
+   "file": "rope_sin.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    64
+   ],
+   "description": "[S, head_dim] RoPE sin table"
+  },
+  "layer0/input_norm": {
+   "file": "layer0/input_norm.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] layer 0 input RMSNorm output"
+  },
+  "layer0/q": {
+   "file": "layer0/q.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] q_proj output (before RoPE)"
+  },
+  "layer0/k": {
+   "file": "layer0/k.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    256
+   ],
+   "description": "[S, KV*hd] k_proj output (before RoPE)"
+  },
+  "layer0/v": {
+   "file": "layer0/v.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    256
+   ],
+   "description": "[S, KV*hd] v_proj output"
+  },
+  "layer0/attn_context": {
+   "file": "layer0/attn_context.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] attention output before o_proj"
+  },
+  "layer0/attn_out": {
+   "file": "layer0/attn_out.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] o_proj output"
+  },
+  "layer0/resid_after_attn": {
+   "file": "layer0/resid_after_attn.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] residual stream after attention"
+  },
+  "layer0/post_attn_norm": {
+   "file": "layer0/post_attn_norm.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] post-attention RMSNorm output"
+  },
+  "layer0/gate": {
+   "file": "layer0/gate.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    5632
+   ],
+   "description": "[S, F] gate_proj output"
+  },
+  "layer0/up": {
+   "file": "layer0/up.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    5632
+   ],
+   "description": "[S, F] up_proj output"
+  },
+  "layer0/mlp_act": {
+   "file": "layer0/mlp_act.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    5632
+   ],
+   "description": "[S, F] silu(gate) * up (down_proj input)"
+  },
+  "layer0/mlp_out": {
+   "file": "layer0/mlp_out.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] MLP output"
+  },
+  "layer0/q_rope": {
+   "file": "layer0/q_rope.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] q after RoPE (computed here, validated below)"
+  },
+  "layer0/k_rope": {
+   "file": "layer0/k_rope.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    256
+   ],
+   "description": "[S, KV*hd] k after RoPE"
+  },
+  "layer0/out": {
+   "file": "layer0/out.f32",
+   "dtype": "f32",
+   "shape": [
+    23,
+    2048
+   ],
+   "description": "[S, D] layer 0 output"
+  },
+  "decode_logits": {
+   "file": "decode_logits.f32",
+   "dtype": "f32",
+   "shape": [
+    2,
+    32000
+   ],
+   "description": "[n, V] logits after feeding greedy tokens 1..n through the KV cache"
+  }
+ },
+ "greedy": {
+  "ids": [
+   1576,
+   7483,
+   310,
+   3444,
+   338,
+   3681,
+   29889,
+   2
+  ],
+  "text": "The capital of France is Paris.",
+  "text_with_special": "The capital of France is Paris.</s>",
+  "stopped_on_eos": true,
+  "max_new_tokens": 8,
+  "steps": [
+   {
+    "step": 0,
+    "token": 1576,
+    "piece": "The",
+    "top5": [
+     [
+      1576,
+      19.877710342407227
+     ],
+     [
+      8241,
+      18.26018524169922
+     ],
+     [
+      16066,
+      16.960172653198242
+     ],
+     [
+      7675,
+      14.272025108337402
+     ],
+     [
+      29902,
+      12.986205101013184
+     ]
+    ],
+    "margin_top1_top2": 1.6175251007080078
+   },
+   {
+    "step": 1,
+    "token": 7483,
+    "piece": "▁capital",
+    "top5": [
+     [
+      7483,
+      21.684236526489258
+     ],
+     [
+      1857,
+      16.360517501831055
+     ],
+     [
+      25343,
+      12.348752975463867
+     ],
+     [
+      6221,
+      12.168054580688477
+     ],
+     [
+      1959,
+      12.10865306854248
+     ]
+    ],
+    "margin_top1_top2": 5.323719024658203
+   },
+   {
+    "step": 2,
+    "token": 310,
+    "piece": "▁of",
+    "top5": [
+     [
+      310,
+      21.861671447753906
+     ],
+     [
+      4272,
+      18.815319061279297
+     ],
+     [
+      322,
+      16.18826675415039
+     ],
+     [
+      313,
+      14.162046432495117
+     ],
+     [
+      20123,
+      11.059783935546875
+     ]
+    ],
+    "margin_top1_top2": 3.0463523864746094
+   },
+   {
+    "step": 3,
+    "token": 3444,
+    "piece": "▁France",
+    "top5": [
+     [
+      3444,
+      23.838449478149414
+     ],
+     [
+      278,
+      14.527650833129883
+     ],
+     [
+      16066,
+      12.597081184387207
+     ],
+     [
+      23788,
+      11.146322250366211
+     ],
+     [
+      5400,
+      11.022978782653809
+     ]
+    ],
+    "margin_top1_top2": 9.310798645019531
+   },
+   {
+    "step": 4,
+    "token": 338,
+    "piece": "▁is",
+    "top5": [
+     [
+      338,
+      21.261104583740234
+     ],
+     [
+      29892,
+      15.732759475708008
+     ],
+     [
+      313,
+      14.372547149658203
+     ],
+     [
+      408,
+      10.686145782470703
+     ],
+     [
+      4852,
+      10.414000511169434
+     ]
+    ],
+    "margin_top1_top2": 5.528345108032227
+   },
+   {
+    "step": 5,
+    "token": 3681,
+    "piece": "▁Paris",
+    "top5": [
+     [
+      3681,
+      17.510238647460938
+     ],
+     [
+      278,
+      11.141907691955566
+     ],
+     [
+      5982,
+      9.979806900024414
+     ],
+     [
+      29901,
+      8.763357162475586
+     ],
+     [
+      7660,
+      8.6864013671875
+     ]
+    ],
+    "margin_top1_top2": 6.368330955505371
+   },
+   {
+    "step": 6,
+    "token": 29889,
+    "piece": ".",
+    "top5": [
+     [
+      29889,
+      20.89078140258789
+     ],
+     [
+      29892,
+      18.88182830810547
+     ],
+     [
+      322,
+      16.037391662597656
+     ],
+     [
+      313,
+      14.21488094329834
+     ],
+     [
+      29991,
+      13.302774429321289
+     ]
+    ],
+    "margin_top1_top2": 2.008953094482422
+   },
+   {
+    "step": 7,
+    "token": 2,
+    "piece": "</s>",
+    "top5": [
+     [
+      2,
+      19.11705780029297
+     ],
+     [
+      13,
+      16.305377960205078
+     ],
+     [
+      739,
+      14.162454605102539
+     ],
+     [
+      450,
+      13.341447830200195
+     ],
+     [
+      3681,
+      13.161672592163086
+     ]
+    ],
+    "margin_top1_top2": 2.8116798400878906
+   }
+  ]
+ },
+ "attention_self_check": {
+  "max_abs_diff": 6.722848602813691e-08,
+  "max_abs_ref": 0.2327454388141632,
+  "tolerance": 0.001,
+  "passed": true,
+  "adjacent_pair_rope_diff": 0.21085854071646679
+ }
+}
