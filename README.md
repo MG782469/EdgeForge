@@ -3,9 +3,146 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 4: tokenizer + chat**, a working text-to-text engine verified against Hugging Face.
+> Current milestone: **Stage 5: our own mixed-precision 4-bit quantizer and `.efq` model file**
+> (verified on the real weights: 12/12 checks, 154/154 matrices, 713.0 MiB).
 > Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels),
-> `stage3-verified` (full forward pass + KV cache).
+> `stage3-verified` (full forward pass + KV cache), `stage4-verified` (tokenizer + chat).
+
+## Stage 5: quantization (`include/ef/quant.h`, `qfile.h`, `quantizer.h`)
+
+**Reproduce the verified model** from the original BF16 checkpoint: one command, no manual steps. It
+quantizes with the named policy, runs the full verification, and exits non-zero unless it passes.
+
+```bash
+bash tools/quantize_tinyllama.sh ~/edgeforge-data/tinyllama ~/edgeforge-data/tinyllama-q4.efq
+# equivalent to:
+~/ef-build/edgeforge quantize --model-dir ~/edgeforge-data/tinyllama --out ~/edgeforge-data/tinyllama-q4.efq \
+    --policy tinyllama-1.1b-chat-v1.0
+~/ef-build/edgeforge verify-quant --qmodel ~/edgeforge-data/tinyllama-q4.efq \
+    --model-dir ~/edgeforge-data/tinyllama --golden tests/golden
+```
+
+The output is byte-identical for any thread count, so re-running gives the same sha256 (the script
+prints it).
+
+**Verified on the real TinyLlama-1.1B-Chat-v1.0 weights (WSL laptop, 2026-10-31).**
+
+| Metric | Result |
+|---|---|
+| verify-quant | **12/12 PASS** |
+| Layer matrices on real activations | **154/154 PASS** (cosine ≥ 0.99 on every prompt) |
+| Size | 2.05 GiB → **713.0 MiB** (2.94× smaller) |
+| Weights streamed per token | 1.93 GiB → **588.0 MiB** (3.36× less) |
+| Matrices in Q4_0 / Q8_0 | 148 / 6 (+ Q8_0 lm_head) |
+| Worst Q4_0 weight rel RMSE | 0.1171 (bound 0.12) |
+| Worst Q8_0 weight rel RMSE | 0.0090 (bound 0.01) |
+| Worst matrix cosine | 0.990002: layer 19 `v_proj` (bound 0.99; its worst single position is 0.908686) |
+
+**The margins are thin, and these numbers belong to this checkpoint.**
+- All three bounds pass with little headroom.
+- **What the 0.99 means:** it is an aggregate, matrix-level cosine. For each matrix and each prompt, the
+  outputs of all of that prompt's positions are compared together. It is **not** a per-position guarantee
+  (layer 19 `v_proj` reaches 0.908686 at one position), and **not** an end-to-end one: the errors of 154
+  matrices compound through 22 layers.
+- End-to-end quality (top-1 agreement, KL, perplexity vs the BF16 engine) is measured in Stage 6.
+- The 3.36× is the reduction in bytes read per token, an upper bound on the decode speed-up. Real speed is
+  measured in Stages 6–7.
+
+**Precision policy.**
+
+| Part | Stored as | Bits per weight | Why |
+|---|---|---|---|
+| 148 layer matrices | `Q4_0` | 4.5 | the bulk of the bytes read per token |
+| layer 0 `k_proj`; `v_proj` of layers 0, 1, 2, 17, 18 | `Q8_0` (overrides) | 8.5 | each failed a bound under all-Q4_0 (below); +1.5 MiB total |
+| lm_head | `Q8_0` | 8.5 | protects the logits |
+| Embedding | BF16 (lossless) | 16 | only one row is read per token |
+| Norms | F32 | 32 | |
+
+**Named policies.**
+- They are version-controlled in `named_policies()` (`src/quantizer.cpp`) and recorded in the `.efq`
+  header.
+- `--policy` values:
+  - `tinyllama-1.1b-chat-v1.0`: the 6 overrides above. It has an architecture guard (2048 / 5632 / 22
+    layers / 32 heads / 4 KV heads / 32000 vocab, untied) and is refused on any other config.
+  - `uniform`: no per-tensor exceptions, works for any model.
+  - `auto` (default): picks a named policy only when its architecture guard matches, and prints that;
+    otherwise `uniform`. The library itself (`QuantizeOptions`) never adds model-specific exceptions.
+- `--override TENSOR=TYPE,...` adds exceptions on top of the policy (exact names or `*` globs, last match
+  wins). The header then records `<policy>+custom`.
+- The overrides were measured on this checkpoint. Another checkpoint with the same architecture gets the
+  same 6 Q8_0 matrices (they cost 1.5 MiB and never lower precision), but needs its own `verify-quant` run.
+
+**How the policy was found (thresholds never changed).**
+1. **All-Q4_0, layer-0 check only: 8/10.**
+   - Layer-0 `k_proj` weight rel RMSE was **0.1256** > 0.12.
+   - Layer-0 `v_proj` GEMV cosine was **0.978525** < 0.99.
+2. **Layer-0 `k_proj`/`v_proj` in Q8_0, check extended to all 154 matrices:** 4 more `v_proj` failed
+   (layers 1, 2, 17, 18).
+3. **Those promoted to Q8_0, as measured and suggested by `verify-quant`:** 12/12 and 154/154.
+
+Notes:
+- **MSE scale search vs absmax:** lower *weight* error (sampled rel RMSE 0.0914 vs 0.0948), but a slightly
+  lower worst layer-0 *activation* cosine (0.978525 vs 0.978716). Minimising weight error is not
+  minimising output error: inputs with outlier channels amplify the error in those columns.
+- **Why `v_proj` gets the extra bits:** GQA makes k/v small (256 × 2048 per layer), so each costs only
+  256 KiB more in Q8_0.
+
+**Q4_0 format.**
+- **Block:** an FP16 scale plus 16 bytes of nibbles. `w[j] = (lo(qs[j]) - 8)·d` and
+  `w[j+16] = (hi(qs[j]) - 8)·d`, so unpacking is one AND and one shift (AVX2-friendly).
+- **Scale per block:** we try llama.cpp's `max/-8` plus 5 symmetric candidates, then refine by least
+  squares (codes fixed, `d = Σx·c / Σc²`). Including `max/-8` means the weight error is never worse than
+  plain Q4_0.
+- **FP16 rounding:** the scale is rounded to FP16 *before* the codes are computed, so the stored pair is
+  exactly what dequantization uses.
+- **Options:** `--no-search` keeps plain absmax. `quant-analyze --model-dir M --golden tests/golden`
+  compares g32/g64/g128 and absmax vs MSE.
+
+**`.efq` file.**
+- Layout: magic `EFQ1`, version, a JSON header, then tensors.
+- The JSON header holds the quant policy (defaults, policy name, `overrides`), the verbatim `config.json`, and a tensor
+  table with type, **rule** (`layers`, `lm_head`, `embed`, `norm`, `override`, `fallback-bf16`), shape,
+  offset, bytes and the measured error.
+- Every tensor is 64-byte aligned, in forward-pass order, so decoding streams the file front to back.
+- Loading is mmap-based, with full validation: magic, version, bounds, alignment, sizes per type,
+  overlap, the expected tensor set and shapes, and **every tensor's type re-derived from the policy**
+  (an exception is never silent; a mismatch is rejected).
+- `.efq` files are git-ignored.
+
+**`verify-quant` checks:**
+- every tensor is dequantized and compared with the BF16 source:
+  - Q4 rel RMSE must be ≤ 0.12 and Q8 ≤ 0.01 (the 5 largest Q4 errors are listed);
+  - lossless tensors must be bit-identical;
+  - no NaN/Inf;
+  - the error stored in the header must match;
+- re-quantizing sample rows reproduces the file byte for byte (the output is also identical for any thread
+  count);
+- size and weight bytes per token are computed from the actual tensor types, plus the cost of the
+  overrides;
+- with `--golden`:
+  - layer-0 GEMV outputs vs the **PyTorch** layer-0 outputs (cosine ≥ 0.99);
+  - **all 154 layer matrices** on real activations, re-derived from the golden residual stream with the
+    exact BF16 weights. `p0` (all 23 positions) feeds all 7 projections per layer, and `p1`–`p3` (last
+    position) feed q/k/v. Recomputing each layer must reproduce the golden layer output (≤ 1e-3),
+    otherwise no output error is reported. Every matrix needs cosine ≥ 0.99 on every prompt
+    (aggregated over that prompt's positions; the worst single position is printed for information);
+  - every override vs the uniform policy: weight error, output cosine, and bytes;
+  - lm_head top-1 on all 4 prompts;
+- for any failure, the next precision is measured and a complete, ready command
+  (`--policy uniform --override ...`) is printed. Nothing is applied automatically.
+
+**Pipeline check on a full-size synthetic checkpoint (random BF16 weights, 2 cores):**
+- Quantize takes 27 s with a warm page cache; two runs give byte-identical files. verify-quant takes 15 s,
+  10 s of it for the activation checks.
+- Method comparison (rel RMSE on random weights):
+
+  | Method | Rel RMSE |
+  |---|---|
+  | g32 absmax | 0.0859 |
+  | g32 MSE (ours) | 0.0824 |
+  | g64 | 0.0922 |
+  | g128 | 0.1007 |
+
 
 ## Stage 4: tokenizer and chat (`include/ef/tokenizer.h`, `sampler.h`, `chat.h`)
 
@@ -147,6 +284,7 @@ tools/
   make_synthetic_checkpoint.py fake TinyLlama-shaped checkpoint for offline pipeline tests
   make_synthetic_golden.py     float64 numpy layer-0 golden data for a synthetic checkpoint
   build.sh                     build + test without CMake
+  quantize_tinyllama.sh        reproduce + verify the Stage 5 model from the BF16 checkpoint
 docs/              architecture.md, golden_format.md
 ```
 
@@ -273,9 +411,11 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 5
+## Next: Stage 6
 
-Custom quantizer and file format:
-- Q4 group-32 blocks for the layer weights, Q8 for lm_head;
-- 64-byte aligned, mmap-able file;
-- measure reconstruction error, file size, and perplexity / top-1 agreement against the FP32 engine.
+Quantized inference:
+- Q4_0 × FP32 and Q8_0 × FP32 GEMV kernels that work directly on the packed blocks, tested against
+  dequantize-then-GEMV, dispatched per tensor type (layer matrices can be Q4_0 or Q8_0);
+- the engine and chat running from the `.efq` file;
+- quality vs the FP32 engine: top-1 agreement, KL divergence and perplexity on a fixed text;
+- tok/s and GB/s (still scalar and 1 thread; speed comes in Stage 7).

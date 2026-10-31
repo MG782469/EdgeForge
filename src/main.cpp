@@ -29,6 +29,8 @@
 #include "ef/chat.h"
 #include "ef/tokenizer.h"
 #include "ef/verify_tokenizer.h"
+#include "ef/quantizer.h"
+#include "ef/verify_quant.h"
 #include <iostream>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -45,7 +47,7 @@ using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.4.0 (stage 4)";
+constexpr const char* kVersion = "0.5.0 (stage 5)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -72,6 +74,10 @@ void print_usage() {
       "                     [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
       "  edgeforge tokenize --tokenizer-dir DIR --text TEXT [--no-special]\n"
       "  edgeforge verify-tokenizer --tokenizer-dir DIR --golden DIR [--model-dir DIR]\n"
+      "  edgeforge quantize --model-dir DIR --out FILE.efq [--policy auto|uniform|NAME] [--override TENSOR=TYPE,...]\n"
+      "                     [--layers q4_0] [--lm-head q8_0] [--embed bf16] [--no-search] [--threads N]\n"
+      "  edgeforge verify-quant --qmodel FILE.efq --model-dir DIR [--golden DIR] [--threads N]\n"
+      "  edgeforge quant-analyze --model-dir DIR [--golden DIR]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -87,7 +93,15 @@ void print_usage() {
       "chat      Interactive chat (TinyLlama chat template, streaming, KV cache reused across turns);\n"
       "          --prompt answers one message and exits. Greedy by default (--temp > 0 to sample).\n"
       "verify-tokenizer  Stage 4: tokenizer, chat template and decoder vs Hugging Face golden data;\n"
-      "          with --model-dir also prompt text -> EdgeForge -> reply text vs PyTorch.\n",
+      "          with --model-dir also prompt text -> EdgeForge -> reply text vs PyTorch.\n"
+      "quantize  Stage 5: BF16 checkpoint -> .efq (Q4_0 layers, Q8_0 lm_head, BF16 embedding, F32 norms).\n"
+      "          --policy auto (default) picks a named, measured policy only if the config matches its\n"
+      "          architecture (tinyllama-1.1b-chat-v1.0: 6 matrices in Q8_0), else uniform. --override adds\n"
+      "          per-tensor exceptions on top (exact names or '*' globs, last match wins).\n"
+      "verify-quant  Reconstruction error of every tensor, lossless parts bit-exact, determinism,\n"
+      "          file size and bytes/token; with --golden also the output error of every layer\n"
+      "          matrix on real activations, overrides vs uniform, and a measured fix for failures.\n"
+      "quant-analyze  Error of Q4 g32/g64/g128, absmax vs MSE scale search, and Q8 on sampled weights.\n",
       kVersion);
 }
 
@@ -134,11 +148,14 @@ Args parse_args(int argc, char** argv) {
                 "rep-penalty", "seed"}},
       {"tokenize", {"tokenizer-dir", "text"}},
       {"verify-tokenizer", {"tokenizer-dir", "golden", "model-dir"}},
+      {"quantize", {"model-dir", "out", "policy", "layers", "lm-head", "embed", "override", "threads"}},
+      {"verify-quant", {"qmodel", "model-dir", "golden", "threads"}},
+      {"quant-analyze", {"model-dir", "golden"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
       {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {}}, {"tokenize", {"no-special"}},
-      {"verify-tokenizer", {}},
+      {"verify-tokenizer", {}}, {"quantize", {"no-search"}}, {"verify-quant", {}}, {"quant-analyze", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -795,6 +812,77 @@ int cmd_chat(const Args& a) {
   return 0;
 }
 
+QType parse_qtype_arg(const Args& a, const std::string& key, QType def) {
+  if (!a.has(key)) return def;
+  const auto t = qtype_from_string(a.get(key));
+  if (!t) throw Error("--" + key + " expects one of q4_0, q8_0, bf16, f16, f32; got '" + a.get(key) + "'");
+  return *t;
+}
+
+int cmd_quantize(const Args& a) {
+  if (!a.has("model-dir") || !a.has("out")) throw Error("quantize needs --model-dir DIR and --out FILE.efq");
+  QuantizeOptions o;
+  o.layers = parse_qtype_arg(a, "layers", QType::Q4_0);
+  o.lm_head = parse_qtype_arg(a, "lm-head", QType::Q8_0);
+  o.embed = parse_qtype_arg(a, "embed", QType::BF16);
+  const ModelConfig cfg = load_model_config(std::filesystem::path(a.get("model-dir")) / "config.json");
+  const PolicySelection sel = select_policy(a.get("policy", "auto"), cfg);
+  o.overrides = sel.overrides;
+  o.policy_name = sel.name;
+  if (a.has("override")) {
+    std::string spec = a.get("override");
+    for (char& ch : spec) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    if (spec == "none") throw Error("--override none is gone: use --policy uniform for the no-exception baseline");
+    const auto extra = parse_overrides(a.get("override"));
+    o.overrides.insert(o.overrides.end(), extra.begin(), extra.end());
+    o.policy_name += "+custom";
+  }
+  o.search = !a.has("no-search");
+  o.threads = static_cast<unsigned>(std::max(0LL, a.get_int("threads", 0)));
+  std::printf("EdgeForge %s - quantize\n  layers %s | lm_head %s | embed %s | norms F32 | block 32 | scale %s\n",
+              kVersion, qtype_name(o.layers), qtype_name(o.lm_head), qtype_name(o.embed),
+              o.search ? "MSE search" : "absmax");
+  std::printf("  policy   : %s (%s)\n", o.policy_name.c_str(), sel.note.c_str());
+  if (o.overrides.empty()) std::printf("  overrides: none\n");
+  for (const auto& ov : o.overrides) std::printf("  override : %s -> %s\n", ov.pattern.c_str(), qtype_name(ov.type));
+  double layer_worst = 0.0;
+  auto t_layer = std::chrono::steady_clock::now();
+  const auto res = quantize_model(a.get("model-dir"), a.get("out"), o, [&](const QTensor& t, std::size_t i, std::size_t n) {
+    (void)i;
+    (void)n;
+    if (qtype_is_block(t.type)) layer_worst = std::max(layer_worst, t.rel_rmse);
+    const bool layer_end = t.name.find("post_attention_layernorm") != std::string::npos;
+    if (layer_end || t.name.rfind("model.layers.", 0) != 0) {
+      const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_layer).count();
+      if (layer_end) {
+        std::printf("  %-34s worst rel RMSE %.4f  [%.1f s]\n", t.name.substr(0, t.name.find(".post_")).c_str(),
+                    layer_worst, s);
+        layer_worst = 0.0;
+      } else {
+        std::printf("  %-34s %-5s rel RMSE %.4f  [%.1f s]\n", t.name.c_str(), qtype_name(t.type), t.rel_rmse, s);
+      }
+      std::fflush(stdout);
+      t_layer = std::chrono::steady_clock::now();
+    }
+  });
+  for (const auto& note : res.notes) std::printf("  note: %s\n", note.c_str());
+  std::printf("\nwrote %s in %.1f s\n", a.get("out").c_str(), res.seconds);
+  if (!o.overrides.empty()) {
+    const auto x = res.override_extra_bytes;
+    std::printf("  overrides   : %s%s of tensor data vs the uniform policy\n", x < 0 ? "-" : "+",
+                human_bytes(static_cast<std::uint64_t>(x < 0 ? -x : x)).c_str());
+  }
+  std::printf("  size        : %s -> %s (%.2fx smaller)\n", human_bytes(res.source_tensor_bytes).c_str(),
+              human_bytes(res.file_bytes).c_str(),
+              static_cast<double>(res.source_tensor_bytes) / static_cast<double>(res.file_bytes));
+  std::printf("  read/token  : %s -> %s (%.2fx less memory traffic per decoded token)\n",
+              human_bytes(res.source_bytes_per_token).c_str(), human_bytes(res.bytes_per_token).c_str(),
+              static_cast<double>(res.source_bytes_per_token) / static_cast<double>(res.bytes_per_token));
+  std::printf("next: edgeforge verify-quant --qmodel %s --model-dir %s --golden tests/golden\n", a.get("out").c_str(),
+              a.get("model-dir").c_str());
+  return 0;
+}
+
 int cmd_sysinfo() {
   std::printf("EdgeForge %s - system\n", kVersion);
   print_system(query_system_info());
@@ -832,6 +920,23 @@ int main(int argc, char** argv) {
     }
     if (a.command == "generate") return cmd_generate(a);
     if (a.command == "chat") return cmd_chat(a);
+    if (a.command == "quantize") return cmd_quantize(a);
+    if (a.command == "verify-quant") {
+      if (!a.has("qmodel") || !a.has("model-dir")) throw Error("verify-quant needs --qmodel FILE and --model-dir DIR");
+      VerifyQuantOptions o;
+      o.qmodel = a.get("qmodel");
+      o.model_dir = a.get("model-dir");
+      o.golden_dir = a.get("golden");
+      o.threads = static_cast<unsigned>(std::max(0LL, a.get_int("threads", 0)));
+      return run_verify_quant(o);
+    }
+    if (a.command == "quant-analyze") {
+      if (!a.has("model-dir")) throw Error("quant-analyze needs --model-dir DIR");
+      QuantAnalyzeOptions o;
+      o.model_dir = a.get("model-dir");
+      o.golden_dir = a.get("golden");
+      return run_quant_analyze(o);
+    }
     if (a.command == "tokenize") return cmd_tokenize(a);
     if (a.command == "verify-tokenizer") {
       if (!a.has("golden") || !a.has("tokenizer-dir")) throw Error("verify-tokenizer needs --tokenizer-dir DIR and --golden DIR");

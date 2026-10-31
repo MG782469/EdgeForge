@@ -8,6 +8,7 @@ out/
 models/
 *.safetensors
 *.gguf
+*.efq
 *.bin
 
 # python
