@@ -23,6 +23,7 @@
 #include "ef/qfile.h"
 #include "ef/qkernels.h"
 #include "ef/safetensors.h"
+#include "ef/threadpool.h"
 
 namespace ef {
 
@@ -86,7 +87,9 @@ struct ForwardTrace {
 class Transformer {
  public:
   // max_seq: KV-cache capacity in tokens (<= max_position_embeddings).
-  Transformer(const Model& model, std::size_t max_seq);
+  // pool (Stage 7, optional): split every matrix's rows and the attention heads across threads.
+  // Results do not depend on the number of threads (each row / head is computed by one thread).
+  Transformer(const Model& model, std::size_t max_seq, ThreadPool* pool = nullptr);
 
   // Runs `token` at position `pos`. Requires pos <= cached() (pos < cached()
   // rewinds: the cache is truncated to pos and overwritten) and pos < max_seq().
@@ -98,16 +101,18 @@ class Transformer {
   std::size_t max_seq() const noexcept { return max_seq_; }
   void reset() noexcept { cached_ = 0; }
   const Model& model() const noexcept { return m_; }
+  ThreadPool* pool() const noexcept { return pool_; }
   std::size_t kv_cache_bytes() const noexcept { return (k_cache_.size() + v_cache_.size()) * sizeof(float); }
 
  private:
   const Model& m_;
+  ThreadPool* pool_ = nullptr;
   std::size_t max_seq_ = 0, cached_ = 0;
   std::size_t D_ = 0, F_ = 0, H_ = 0, KV_ = 0, hd_ = 0, kvd_ = 0, V_ = 0, L_ = 0;
   float eps_ = 1e-5f;
   kern::RopeTable rope_;
   std::vector<float> k_cache_, v_cache_;  // [layer][max_seq][kv_dim]
-  std::vector<float> x_, h_, q_, ctx_, o_, gate_, up_, scores_, logits_;
+  std::vector<float> x_, h_, q_, ctx_, o_, gate_, up_, scores_, logits_;  // scores_: [threads][max_seq]
 };
 
 struct GreedyResult {

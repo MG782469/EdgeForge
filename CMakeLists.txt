@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.6.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.7.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,6 +92,8 @@ add_library(ef_core STATIC
   src/quantizer.cpp
   src/verify_quant.cpp
   src/qkernels.cpp
+  src/threadpool.cpp
+  src/bench_decode.cpp
   src/eval_quant.cpp
 )
 target_include_directories(ef_core PUBLIC include)

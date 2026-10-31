@@ -1,4 +1,5 @@
 // EdgeForge - Stage 6 tests: packed-weight kernels and the engine running from an .efq file.
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <random>
@@ -12,6 +13,7 @@
 #include "ef/qkernels.h"
 #include "ef/quant.h"
 #include "ef/quantizer.h"
+#include "ef/threadpool.h"
 #include "engine_golden.h"
 #include "test_framework.h"
 #include "tiny_model.h"
@@ -33,6 +35,21 @@ std::vector<std::uint8_t> random_rows(QType t, std::size_t rows, std::size_t col
     const std::uint16_t h = f32_to_fp16(scale(rng));
     std::memcpy(v.data() + off, &h, 2);
   }
+  return v;
+}
+
+// Runs a test section with a given kernel backend and restores the previous one.
+struct BackendScope {
+  kern::Backend old = kern::backend();
+  explicit BackendScope(kern::Backend b) { kern::set_backend(b); }
+  ~BackendScope() { kern::set_backend(old); }
+  BackendScope(const BackendScope&) = delete;
+  BackendScope& operator=(const BackendScope&) = delete;
+};
+
+std::vector<kern::Backend> all_backends() {
+  std::vector<kern::Backend> v = {kern::Backend::Scalar};
+  if (kern::avx2_compiled()) v.push_back(kern::Backend::Avx2);
   return v;
 }
 
@@ -104,6 +121,7 @@ TEST(qinfer_packed_dot_layout_and_edge_codes) {
 }
 
 TEST(qinfer_dispatch_every_type_and_row_lookup) {
+  const BackendScope scalar(kern::Backend::Scalar);  // bit-identity with the Stage 2 kernels below
   std::mt19937 rng(62);
   std::normal_distribution<float> nd(0.0f, 0.3f);
   const std::size_t rows = 7, cols = 96;
@@ -136,6 +154,109 @@ TEST(qinfer_dispatch_every_type_and_row_lookup) {
       std::vector<float> ref(rows);
       kern::matvec_f32(ref.data(), reinterpret_cast<const float*>(W.data()), x.data(), rows, cols);
       CHECK(ref == y);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- Stage 7: AVX2 + threads
+
+TEST(qinfer_avx2_kernels_match_the_exact_dot) {
+  if (!kern::avx2_compiled()) {
+    std::printf("    (skipped: built without AVX2)\n");
+    return;
+  }
+#if defined(EF_HAVE_AVX2)
+  std::mt19937 rng(63);
+  std::normal_distribution<float> nd(0.0f, 1.0f);
+  double worst = 0.0;
+  for (std::size_t n : {std::size_t{32}, std::size_t{64}, std::size_t{96}, std::size_t{2048}, std::size_t{5632}}) {
+    std::vector<float> x(n);
+    for (auto& v : x) v = nd(rng) * (nd(rng) > 2.0f ? 30.0f : 1.0f);
+    for (QType t : {QType::Q4_0, QType::Q8_0}) {
+      const auto W = random_rows(t, 8, n, rng);
+      const std::size_t rb = static_cast<std::size_t>(qtype_row_bytes(t, n));
+      for (std::size_t r = 0; r < 8; ++r) {
+        const std::uint8_t* row = W.data() + r * rb;
+        const float got = t == QType::Q4_0 ? kern::dot_q4_0_avx2(row, x.data(), n) : kern::dot_q8_0_avx2(row, x.data(), n);
+        worst = std::max(worst, rel_dot_error(t, row, x.data(), n, got));
+      }
+    }
+  }
+  for (std::size_t n : {std::size_t{1}, std::size_t{15}, std::size_t{33}, std::size_t{100}, std::size_t{2048}}) {
+    std::vector<float> w(n), x(n);
+    for (auto& v : w) v = nd(rng);
+    for (auto& v : x) v = nd(rng);
+    std::vector<std::uint16_t> wb(n);
+    for (std::size_t i = 0; i < n; ++i) wb[i] = f32_to_bf16(w[i]);
+    const float gb = kern::dot_bf16_avx2(wb.data(), x.data(), n), gf = kern::dot_f32_avx2(w.data(), x.data(), n);
+    worst = std::max(worst, rel_dot_error(QType::BF16, reinterpret_cast<const std::uint8_t*>(wb.data()), x.data(), n, gb));
+    worst = std::max(worst, rel_dot_error(QType::F32, reinterpret_cast<const std::uint8_t*>(w.data()), x.data(), n, gf));
+  }
+  CHECK(worst < 1e-5);
+  std::printf("    AVX2 kernels vs exact dot (relative to sum|w*x|): worst %.2e\n", worst);
+#endif
+}
+
+TEST(qinfer_threadpool_covers_every_index_once) {
+  for (unsigned T : {1u, 2u, 3u, 8u}) {
+    ThreadPool pool(T);
+    CHECK_EQ(pool.size(), T);
+    for (int rep = 0; rep < 300; ++rep) {
+      for (std::size_t n : {std::size_t{0}, std::size_t{1}, std::size_t{5}, std::size_t{100}, std::size_t{1001}}) {
+        std::vector<std::atomic<int>> hits(n);
+        std::atomic<unsigned> max_chunk{0};
+        pool.parallel_for(
+            n,
+            [&](std::size_t c, std::size_t b, std::size_t e) {
+              unsigned prev = max_chunk.load();
+              while (c > prev && !max_chunk.compare_exchange_weak(prev, static_cast<unsigned>(c))) {
+              }
+              for (std::size_t i = b; i < e; ++i) hits[i].fetch_add(1);
+            },
+            static_cast<std::size_t>(rep % 3 == 0 ? 1 : 16));
+        int bad = 0;
+        for (auto& h : hits) bad += h.load() != 1;
+        CHECK_EQ(bad, 0);
+        CHECK(max_chunk.load() < T);
+      }
+    }
+  }
+}
+
+TEST(qinfer_parallel_gemv_is_bit_identical_for_any_thread_count) {
+  std::mt19937 rng(64);
+  std::normal_distribution<float> nd(0.0f, 0.3f);
+  const std::size_t cols = 256;
+  std::vector<float> x(cols);
+  for (auto& v : x) v = nd(rng);
+  std::vector<std::vector<std::uint8_t>> store;
+  std::vector<WeightView> views;
+  for (auto [t, rows] : {std::pair{QType::Q4_0, std::size_t{300}}, std::pair{QType::Q8_0, std::size_t{37}},
+                         std::pair{QType::BF16, std::size_t{70}}, std::pair{QType::F32, std::size_t{5}}}) {
+    std::vector<float> src(rows * cols);
+    for (auto& v : src) v = nd(rng);
+    const std::size_t rb = static_cast<std::size_t>(qtype_row_bytes(t, cols));
+    store.emplace_back(rows * rb);
+    for (std::size_t r = 0; r < rows; ++r) quantize_row(t, src.data() + r * cols, cols, store.back().data() + r * rb);
+    views.push_back(WeightView{t, store.back().data(), rows, cols});
+  }
+  for (kern::Backend b : all_backends()) {
+    const BackendScope scope(b);
+    auto run_all = [&](ThreadPool* pool) {
+      std::vector<std::vector<float>> ys;
+      for (const auto& v : views) ys.emplace_back(v.rows);
+      std::vector<kern::MatvecJob> jobs;
+      for (std::size_t i = 0; i < views.size(); ++i) jobs.push_back({ys[i].data(), &views[i], x.data()});
+      kern::matvec_jobs(jobs.data(), jobs.size(), pool);
+      return ys;
+    };
+    const auto ref = run_all(nullptr);
+    for (unsigned T : {2u, 3u, 5u, 8u}) {
+      ThreadPool pool(T);
+      CHECK(run_all(&pool) == ref);
+      std::vector<float> one(views[0].rows);
+      kern::matvec(one.data(), views[0], x.data(), &pool);
+      CHECK(one == ref[0]);
     }
   }
 }
@@ -271,4 +392,43 @@ TEST(qinfer_eval_quant_measures_a_quantized_file) {
   CHECK_EQ(r.greedy_prompts, std::size_t{2});
   // The check list: kernels, NaN/Inf, mean KL, confident top-1, perplexity ratio.
   CHECK_EQ(r.passed + r.failed, 5);
+}
+
+TEST(qinfer_engine_threads_and_backends) {
+  const ef_test::TinyDir d(tiny32(), 73);
+  quantize_model(d.path, d.path / "q.efq", QuantizeOptions{});
+  const Model q = Model::load_efq(d.path / "q.efq");
+  auto run_pool = [&](ThreadPool* pool) {
+    Transformer tr(q, kIds.size(), pool);
+    std::vector<std::vector<float>> out;
+    const auto V = static_cast<std::size_t>(q.config().vocab_size);
+    for (std::size_t p = 0; p < kIds.size(); ++p) {
+      const float* lg = tr.forward(kIds[p], p);
+      out.emplace_back(lg, lg + V);
+    }
+    return out;
+  };
+  std::vector<std::vector<std::vector<float>>> per_backend;
+  for (kern::Backend b : all_backends()) {
+    const BackendScope scope(b);
+    const auto ref = run_pool(nullptr);
+    for (unsigned T : {2u, 3u, 7u}) {
+      ThreadPool pool(T);
+      CHECK(run_pool(&pool) == ref);  // same logits, bit for bit, for any thread count
+    }
+    per_backend.push_back(ref);
+  }
+  if (per_backend.size() == 2) {  // AVX2 vs scalar: only the rounding order differs
+    double worst = 0.0;
+    std::size_t same = 0;
+    for (std::size_t p = 0; p < kIds.size(); ++p) {
+      const DiffStats s = compare(per_backend[1][p].data(), per_backend[0][p].data(), per_backend[0][p].size());
+      worst = std::max(worst, s.rel_err);
+      same += kern::argmax(per_backend[1][p].data(), per_backend[1][p].size()) ==
+              kern::argmax(per_backend[0][p].data(), per_backend[0][p].size());
+    }
+    CHECK(worst < 1e-4);
+    CHECK_EQ(same, kIds.size());
+    std::printf("    engine AVX2 vs scalar logits: max rel err %.2e\n", worst);
+  }
 }

@@ -17,6 +17,8 @@
 
 namespace ef {
 
+class ThreadPool;
+
 struct EvalQuantReport {
   int passed = 0, failed = 0;
   std::vector<std::string> failed_checks;
@@ -43,6 +45,7 @@ struct EvalQuantOptions {
   std::filesystem::path tokenizer_dir;  // default: model_dir
   std::size_t max_text_tokens = 128;
   std::vector<std::int32_t> text_ids;   // tests: token ids to use instead of text_file
+  ThreadPool* pool = nullptr;           // Stage 7: run both engines multi-threaded
   EvalQuantReport* report = nullptr;
 };
 

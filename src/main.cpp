@@ -11,8 +11,10 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "ef/error.h"
@@ -28,6 +30,9 @@
 #include "ef/verify_forward.h"
 #include "ef/chat.h"
 #include "ef/eval_quant.h"
+#include "ef/bench_decode.h"
+#include "ef/qkernels.h"
+#include "ef/threadpool.h"
 #include "ef/tokenizer.h"
 #include "ef/verify_tokenizer.h"
 #include "ef/quantizer.h"
@@ -48,7 +53,7 @@ using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.6.0 (stage 6)";
+constexpr const char* kVersion = "0.7.0 (stage 7)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -70,9 +75,9 @@ void print_usage() {
       "  edgeforge verify-math --golden DIR [--model-dir DIR] [--prompt p0_factual] [--bench FILE]\n"
       "  edgeforge verify-forward --golden DIR --model-dir DIR [--prompt NAME]\n"
       "  edgeforge generate (--model-dir DIR | --qmodel FILE.efq) (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR)\n"
-      "                     [--max-new 32] [--eos ID] [--bench FILE]\n"
+      "                     [--max-new 32] [--eos ID] [--bench FILE] [--threads N] [--kernels auto|avx2|scalar]\n"
       "  edgeforge chat     (--model-dir DIR | --qmodel FILE.efq --tokenizer-dir DIR) [--prompt TEXT] [--system TEXT]\n"
-      "                     [--max-new 256] [--ctx 2048]\n"
+      "                     [--max-new 256] [--ctx 2048] [--threads N] [--kernels auto|avx2|scalar]\n"
       "                     [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
       "  edgeforge tokenize --tokenizer-dir DIR --text TEXT [--no-special]\n"
       "  edgeforge verify-tokenizer --tokenizer-dir DIR --golden DIR [--model-dir DIR]\n"
@@ -81,7 +86,9 @@ void print_usage() {
       "  edgeforge verify-quant --qmodel FILE.efq --model-dir DIR [--golden DIR] [--threads N]\n"
       "  edgeforge quant-analyze --model-dir DIR [--golden DIR]\n"
       "  edgeforge eval-quant --qmodel FILE.efq [--model-dir DIR] [--golden DIR] [--text FILE] [--max-tokens 128]\n"
-      "                     [--tokenizer-dir DIR]\n"
+      "                     [--tokenizer-dir DIR] [--threads N] [--kernels auto|avx2|scalar]\n"
+      "  edgeforge bench-decode (--qmodel FILE.efq | --model-dir DIR) [--ids-from DIR | --ids 1,...] [--tokens 32]\n"
+      "                     [--threads 2,4,6,12] [--bench bench/membench.json]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -109,7 +116,10 @@ void print_usage() {
       "eval-quant  Stage 6: the engine on the packed .efq weights - kernel check on the real weights,\n"
       "          KL / top-1 vs PyTorch (golden, teacher-forced), greedy continuations, text perplexity\n"
       "          vs the BF16 engine (--model-dir), tok/s, GB/s and peak RSS. Exit code 0 = PASS.\n"
-      "--qmodel  generate / chat run the quantized engine straight from an .efq file.\n",
+      "--qmodel  generate / chat run the quantized engine straight from an .efq file.\n"
+      "bench-decode  Stage 7 speed-up ladder: scalar 1 thread -> AVX2 1 thread -> AVX2 N threads;\n"
+      "          tok/s, GB/s, %% of the membench peak; checks every thread count gives identical logits.\n"
+      "--threads N   engine threads (default: physical cores). --kernels: auto = AVX2 if built in.\n",
       kVersion);
 }
 
@@ -150,22 +160,23 @@ Args parse_args(int argc, char** argv) {
       {"membench", {"mb", "threads", "runs", "passes", "warmup", "json"}},
       {"sysinfo", {}},
       {"verify-math", {"golden", "model-dir", "prompt", "bench"}},
-      {"verify-forward", {"golden", "model-dir", "prompt"}},
-      {"generate", {"model-dir", "qmodel", "ids", "ids-from", "max-new", "eos", "bench"}},
-      {"chat", {"model-dir", "qmodel", "tokenizer-dir", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
+      {"verify-forward", {"golden", "model-dir", "prompt", "kernels"}},
+      {"generate", {"model-dir", "qmodel", "ids", "ids-from", "max-new", "eos", "bench", "threads", "kernels"}},
+      {"chat", {"model-dir", "qmodel", "tokenizer-dir", "threads", "kernels", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
                 "rep-penalty", "seed"}},
       {"tokenize", {"tokenizer-dir", "text"}},
       {"verify-tokenizer", {"tokenizer-dir", "golden", "model-dir"}},
       {"quantize", {"model-dir", "out", "policy", "layers", "lm-head", "embed", "override", "threads"}},
       {"verify-quant", {"qmodel", "model-dir", "golden", "threads"}},
       {"quant-analyze", {"model-dir", "golden"}},
-      {"eval-quant", {"qmodel", "model-dir", "golden", "text", "max-tokens", "tokenizer-dir"}},
+      {"eval-quant", {"qmodel", "model-dir", "golden", "text", "max-tokens", "tokenizer-dir", "threads", "kernels"}},
+      {"bench-decode", {"qmodel", "model-dir", "ids", "ids-from", "tokens", "threads", "bench"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
       {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {}}, {"tokenize", {"no-special"}},
       {"verify-tokenizer", {}}, {"quantize", {"no-search"}}, {"verify-quant", {}}, {"quant-analyze", {}},
-      {"eval-quant", {}},
+      {"eval-quant", {}}, {"bench-decode", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -692,6 +703,61 @@ int cmd_membench(const Args& a) {
   return all_ok ? 0 : 1;
 }
 
+// ---- Stage 7: threads and kernels for the engine commands
+
+unsigned default_threads() {
+  const SystemInfo si = query_system_info();
+  if (si.physical_cores > 0) return static_cast<unsigned>(si.physical_cores);
+  return std::max(1u, std::thread::hardware_concurrency());
+}
+
+// nullptr for 1 thread (the engine then runs on the calling thread only).
+std::unique_ptr<ThreadPool> make_pool(const Args& a) {
+  const long long t = a.has("threads") ? a.get_int("threads", 1) : static_cast<long long>(default_threads());
+  if (t < 1 || t > 1024) throw Error("--threads expects 1..1024");
+  return t > 1 ? std::make_unique<ThreadPool>(static_cast<unsigned>(t)) : nullptr;
+}
+
+std::string engine_label(const ThreadPool* pool) {
+  const unsigned t = pool != nullptr ? pool->size() : 1u;
+  return strf("%s kernels, %u thread%s", kern::backend_name(kern::backend()), t, t > 1 ? "s" : "");
+}
+
+std::vector<unsigned> parse_uint_list(const std::string& s) {
+  std::vector<unsigned> v;
+  for (const auto id : parse_id_list(s)) {
+    if (id < 1) throw Error("--threads list entries must be >= 1");
+    v.push_back(static_cast<unsigned>(id));
+  }
+  return v;
+}
+
+double membench_peak(const Args& a) {
+  const std::string path = a.get("bench", fs::exists("bench/membench.json") ? "bench/membench.json" : "");
+  if (path.empty()) return 0.0;
+  std::ifstream in(path, std::ios::binary);
+  const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  if (text.empty()) return 0.0;
+  return json::parse(text).at("peak_median_gbps").as_double();
+}
+
+int cmd_bench_decode(const Args& a) {
+  BenchDecodeOptions o;
+  o.qmodel = a.get("qmodel");
+  o.model_dir = a.get("model-dir");
+  if (a.has("ids-from")) {
+    o.prompt = GoldenPrompt::open(a.get("ids-from")).input_ids();
+  } else if (a.has("ids")) {
+    for (const auto id : parse_id_list(a.get("ids"))) o.prompt.push_back(id);
+  } else if (fs::exists("tests/golden/prompts/p0_factual/manifest.json")) {
+    o.prompt = GoldenPrompt::open("tests/golden/prompts/p0_factual").input_ids();
+  }
+  o.tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("tokens", 32)));
+  if (a.has("threads")) o.threads = parse_uint_list(a.get("threads"));
+  o.peak_gbps = membench_peak(a);
+  return run_bench_decode(o);
+}
+
 // The BF16 reference (--model-dir) or the quantized engine on an .efq file (--qmodel).
 Model load_engine_model(const Args& a) {
   if (a.has("qmodel") && a.has("model-dir")) throw Error("give either --model-dir (BF16) or --qmodel (.efq), not both");
@@ -714,8 +780,9 @@ int cmd_generate(const Args& a) {
   const double load_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_load).count();
   const auto max_new = static_cast<std::size_t>(std::max(1LL, a.get_int("max-new", 32)));
   const auto eos = static_cast<std::int32_t>(a.get_int("eos", m.config().eos_token_id));
-  Transformer tr(m, ids.size() + max_new);
-  std::printf("EdgeForge %s - generate (scalar kernels, FP32 activations, 1 thread)\n", kVersion);
+  const auto pool = make_pool(a);
+  Transformer tr(m, ids.size() + max_new, pool.get());
+  std::printf("EdgeForge %s - generate (%s, FP32 activations)\n", kVersion, engine_label(pool.get()).c_str());
   std::printf("model: %s\n", m.description().c_str());
   std::printf("model loaded (mmap) in %.2f s | KV cache %s | %s of weights per token\n", load_s,
               human_bytes(tr.kv_cache_bytes()).c_str(), human_bytes(m.weight_bytes_per_token()).c_str());
@@ -774,6 +841,8 @@ int cmd_chat(const Args& a) {
   o.sampler.top_p = static_cast<float>(a.get_double("top-p", 1.0));
   o.sampler.repetition_penalty = static_cast<float>(a.get_double("rep-penalty", 1.0));
   o.sampler.seed = static_cast<std::uint64_t>(a.get_int("seed", 0));
+  const auto pool = make_pool(a);
+  o.pool = pool.get();
   ChatSession chat(model, tok, o);
 
   auto print_stats = [](const TurnStats& s) {
@@ -799,9 +868,10 @@ int cmd_chat(const Args& a) {
                                                                  static_cast<double>(o.sampler.top_p),
                                                                  static_cast<unsigned long long>(o.sampler.seed));
   std::printf("EdgeForge %s - CPU inference engine, no ML libraries\n", kVersion);
-  std::printf("model: %s (%lld layers, %s, scalar kernels, 1 thread) | tokenizer: %zu tokens%s\n",
+  std::printf("model: %s (%lld layers, %s, %s) | tokenizer: %zu tokens%s\n",
               (a.has("qmodel") ? fs::path(a.get("qmodel")) : model_dir).filename().string().c_str(),
               static_cast<long long>(model.config().num_hidden_layers), model.description().c_str(),
+              engine_label(pool.get()).c_str(),
               tok.vocab_size(), tok.chat_template().empty() || is_zephyr_template(tok.chat_template()) ? "" : " (unknown chat template!)");
   std::printf("sampling: %s | context %zu tokens | commands: /reset  /exit\n\n", sampling.c_str(), o.max_seq);
   std::string line;
@@ -919,6 +989,7 @@ int main(int argc, char** argv) {
 #endif
   try {
     const Args a = parse_args(argc, argv);
+    if (a.has("kernels")) kern::set_backend(kern::backend_from_string(a.get("kernels")));
     if (a.command.empty() || a.command == "help" || a.command == "--help" || a.command == "-h") {
       print_usage();
       return a.command.empty() ? 2 : 0;
@@ -937,9 +1008,11 @@ int main(int argc, char** argv) {
       o.golden_dir = a.get("golden");
       o.model_dir = a.get("model-dir");
       o.prompt = a.get("prompt");
+      std::printf("(engine kernels: %s)\n", kern::backend_name(kern::backend()));
       return run_verify_forward(o);
     }
     if (a.command == "generate") return cmd_generate(a);
+    if (a.command == "bench-decode") return cmd_bench_decode(a);
     if (a.command == "chat") return cmd_chat(a);
     if (a.command == "quantize") return cmd_quantize(a);
     if (a.command == "verify-quant") {
@@ -960,6 +1033,8 @@ int main(int argc, char** argv) {
       o.text_file = a.get("text");
       o.tokenizer_dir = a.get("tokenizer-dir");
       o.max_text_tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("max-tokens", 128)));
+      const auto pool = make_pool(a);
+      o.pool = pool.get();
       return run_eval_quant(o);
     }
     if (a.command == "quant-analyze") {

@@ -19,8 +19,8 @@ B. per prompt:  text -> tokenizer -> [embed -> 22 x (RMSNorm, QKV, RoPE, GQA att
 | 3 ✅ | FP32 forward pass + KV cache | `edgeforge verify-forward` PASS on all golden prompts |
 | 4 ✅ | Tokenizer, chat template, sampler | `verify-tokenizer` 122/122 + chat template + end-to-end text vs PyTorch |
 | 5 ✅ | Quantizer + `.efq` file format | `verify-quant` 12/12 on the real weights: reconstruction, determinism, GEMV cosine of all 154 layer matrices on real activations |
-| 6 | Q4 inference straight from the packed `.efq` | `eval-quant`: kernels = dequantized math; mean KL ≤ 0.10, confident top-1 ≥ 95%, PPL ratio ≤ 1.15 vs FP32/BF16 |
-| 7 | Threads + SIMD (+ INT8 activations) | same outputs, speed-up ladder |
+| 6 ✅ | Q4 inference straight from the packed `.efq` | `eval-quant`: kernels = dequantized math; mean KL ≤ 0.10, confident top-1 ≥ 95%, PPL ratio ≤ 1.15 vs FP32/BF16 |
+| 7 | Threads + SIMD (AVX2) | `bench-decode`: speed-up ladder, logits bit-identical for any thread count; `eval-quant` targets still met |
 | 8 | Profiler, benchmarks, demo | reproducible report |
 
 ## Stage 1 design decisions

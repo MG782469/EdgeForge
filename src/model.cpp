@@ -143,7 +143,7 @@ Model Model::dequantized_copy(const Model& src) {
   return m;
 }
 
-Transformer::Transformer(const Model& model, std::size_t max_seq) : m_(model) {
+Transformer::Transformer(const Model& model, std::size_t max_seq, ThreadPool* pool) : m_(model), pool_(pool) {
   const ModelConfig& c = model.config();
   D_ = static_cast<std::size_t>(c.hidden_size);
   F_ = static_cast<std::size_t>(c.intermediate_size);
@@ -170,7 +170,7 @@ Transformer::Transformer(const Model& model, std::size_t max_seq) : m_(model) {
   o_.resize(D_);
   gate_.resize(F_);
   up_.resize(F_);
-  scores_.resize(max_seq_);
+  scores_.resize(max_seq_ * (pool_ != nullptr ? pool_->size() : 1));
   logits_.resize(V_);
 }
 
@@ -206,21 +206,30 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
 
     // ---- attention block
     kern::rmsnorm(h, x, w.attn_norm.data(), D_, eps_);
-    kern::matvec(q_.data(), w.wq, h);
-    kern::matvec(k_pos, w.wk, h);
-    kern::matvec(v_pos, w.wv, h);
+    const kern::MatvecJob qkv[3] = {{q_.data(), &w.wq, h}, {k_pos, &w.wk, h}, {v_pos, &w.wv, h}};
+    kern::matvec_jobs(qkv, 3, pool_);  // one parallel region for q, k and v
     kern::rope_apply(q_.data(), H_, hd_, cos_row, sin_row);
     kern::rope_apply(k_pos, KV_, hd_, cos_row, sin_row);
-    kern::attention(ctx_.data(), q_.data(), k_layer, v_layer, pos + 1, H_, KV_, hd_, scores_.data());
-    kern::matvec(o_.data(), w.wo, ctx_.data());
+    if (pool_ != nullptr && pool_->size() > 1) {
+      pool_->parallel_for(
+          H_,
+          [&](std::size_t c, std::size_t hb, std::size_t he) {
+            kern::attention_heads(ctx_.data(), q_.data(), k_layer, v_layer, pos + 1, H_, KV_, hd_,
+                                  scores_.data() + c * max_seq_, hb, he);
+          },
+          4);
+    } else {
+      kern::attention(ctx_.data(), q_.data(), k_layer, v_layer, pos + 1, H_, KV_, hd_, scores_.data());
+    }
+    kern::matvec(o_.data(), w.wo, ctx_.data(), pool_);
     kern::add_inplace(x, o_.data(), D_);
 
     // ---- MLP block (SwiGLU)
     kern::rmsnorm(h, x, w.ffn_norm.data(), D_, eps_);
-    kern::matvec(gate_.data(), w.w_gate, h);
-    kern::matvec(up_.data(), w.w_up, h);
+    const kern::MatvecJob gate_up[2] = {{gate_.data(), &w.w_gate, h}, {up_.data(), &w.w_up, h}};
+    kern::matvec_jobs(gate_up, 2, pool_);
     kern::swiglu(gate_.data(), gate_.data(), up_.data(), F_);
-    kern::matvec(o_.data(), w.w_down, gate_.data());
+    kern::matvec(o_.data(), w.w_down, gate_.data(), pool_);
     kern::add_inplace(x, o_.data(), D_);
 
     if (trace != nullptr && trace->capture) std::memcpy(trace->layer_out.data() + l * D_, x, D_ * sizeof(float));
@@ -230,7 +239,7 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
   kern::rmsnorm(h, x, m_.final_norm().data(), D_, eps_);
   if (trace != nullptr && trace->capture) std::memcpy(trace->final_norm.data(), h, D_ * sizeof(float));
   if (!compute_logits) return nullptr;
-  kern::matvec(logits_.data(), m_.lm_head(), h);
+  kern::matvec(logits_.data(), m_.lm_head(), h, pool_);
   return logits_.data();
 }
 

@@ -93,5 +93,10 @@ void rope_apply(float* x, std::size_t n_heads, std::size_t head_dim, const float
 // which is exactly the causal mask). Scores are scaled by 1/sqrt(head_dim).
 void attention(float* out, const float* q, const float* k_cache, const float* v_cache, std::size_t n_pos,
                std::size_t n_heads, std::size_t n_kv_heads, std::size_t head_dim, float* scores) noexcept;
+// Stage 7: the same computation for heads [h_begin, h_end) only (heads are independent, so a
+// thread pool can split them; each head is computed exactly as by attention()).
+void attention_heads(float* out, const float* q, const float* k_cache, const float* v_cache, std::size_t n_pos,
+                     std::size_t n_heads, std::size_t n_kv_heads, std::size_t head_dim, float* scores,
+                     std::size_t h_begin, std::size_t h_end) noexcept;
 
 }  // namespace ef::kern

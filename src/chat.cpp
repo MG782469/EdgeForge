@@ -20,7 +20,7 @@ const Model& checked(const Model& model, const Tokenizer& tok, const ChatOptions
 }  // namespace
 
 ChatSession::ChatSession(const Model& model, const Tokenizer& tok, const ChatOptions& opt)
-    : m_(checked(model, tok, opt)), tok_(tok), opt_(opt), tr_(model, opt.max_seq), sampler_(opt.sampler) {
+    : m_(checked(model, tok, opt)), tok_(tok), opt_(opt), tr_(model, opt.max_seq, opt.pool), sampler_(opt.sampler) {
   reset();
 }
 

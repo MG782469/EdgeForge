@@ -21,6 +21,7 @@ struct ChatOptions {
   std::size_t max_new = 256;   // reply length limit
   SamplerConfig sampler;       // default: greedy
   std::string system_prompt;   // optional
+  ThreadPool* pool = nullptr;  // Stage 7: row-parallel matrix multiplies (nullptr = 1 thread)
 };
 
 struct TurnStats {

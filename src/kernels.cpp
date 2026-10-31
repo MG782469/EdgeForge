@@ -147,10 +147,16 @@ void rope_apply(float* x, std::size_t n_heads, std::size_t head_dim, const float
 
 void attention(float* out, const float* q, const float* k_cache, const float* v_cache, std::size_t n_pos,
                std::size_t n_heads, std::size_t n_kv_heads, std::size_t head_dim, float* scores) noexcept {
+  attention_heads(out, q, k_cache, v_cache, n_pos, n_heads, n_kv_heads, head_dim, scores, 0, n_heads);
+}
+
+void attention_heads(float* out, const float* q, const float* k_cache, const float* v_cache, std::size_t n_pos,
+                     std::size_t n_heads, std::size_t n_kv_heads, std::size_t head_dim, float* scores,
+                     std::size_t h_begin, std::size_t h_end) noexcept {
   const std::size_t group = n_heads / n_kv_heads;
   const std::size_t kv_dim = n_kv_heads * head_dim;
   const auto scale = static_cast<float>(1.0 / std::sqrt(static_cast<double>(head_dim)));
-  for (std::size_t h = 0; h < n_heads; ++h) {
+  for (std::size_t h = h_begin; h < h_end; ++h) {
     const std::size_t kv = h / group;
     const float* qh = q + h * head_dim;
     for (std::size_t t = 0; t < n_pos; ++t) {

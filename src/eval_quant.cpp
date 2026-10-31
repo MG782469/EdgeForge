@@ -18,6 +18,7 @@
 #include "ef/model.h"
 #include "ef/qkernels.h"
 #include "ef/sysinfo.h"
+#include "ef/threadpool.h"
 #include "ef/tokenizer.h"
 
 namespace fs = std::filesystem;
@@ -137,13 +138,14 @@ KernelCheck check_kernels(const Model& m) {
   std::normal_distribution<float> nd(0.0f, 1.0f);
   auto one = [&](const std::string& name, const WeightView& w) {
     if (w.type != QType::Q4_0 && w.type != QType::Q8_0) return;
-    std::vector<float> x(w.cols), deq(w.cols);
+    std::vector<float> x(w.cols), deq(w.cols), y(w.rows);
     for (auto& v : x) v = nd(rng);
     const std::size_t samples = std::min<std::size_t>(w.rows, 16);
     for (std::size_t k = 0; k < samples; ++k) {
       const std::size_t r = samples == 1 ? 0 : k * (w.rows - 1) / (samples - 1);
       const std::uint8_t* row = w.data + r * w.row_bytes();
-      const float got = w.type == QType::Q4_0 ? kern::dot_q4_0(row, x.data(), w.cols) : kern::dot_q8_0(row, x.data(), w.cols);
+      kern::matvec_rows(y.data(), w, x.data(), r, r + 1);  // the kernels of the active backend
+      const float got = y[r];
       dequantize_row(w.type, row, w.cols, deq.data());
       double exact = 0.0, mag = 0.0;
       for (std::size_t c = 0; c < w.cols; ++c) {
@@ -184,7 +186,9 @@ int run_eval_quant(const EvalQuantOptions& o) {
   const ModelConfig& c = qm.config();
   const auto V = static_cast<std::size_t>(c.vocab_size);
   const auto eos = static_cast<std::int32_t>(c.eos_token_id);
-  std::printf("EdgeForge eval-quant: the engine on packed weights (scalar kernels, 1 thread)\n");
+  std::printf("EdgeForge eval-quant: the engine on packed weights (%s kernels, %u thread%s)\n",
+              kern::backend_name(kern::backend()), o.pool != nullptr ? o.pool->size() : 1u,
+              o.pool != nullptr && o.pool->size() > 1 ? "s" : "");
   std::printf("  model : %s\n  file  : %s (%s), %s of weights read per token\n", qm.description().c_str(),
               o.qmodel.string().c_str(), human_bytes(fs::file_size(o.qmodel)).c_str(),
               human_bytes(qm.weight_bytes_per_token()).c_str());
@@ -201,9 +205,9 @@ int run_eval_quant(const EvalQuantOptions& o) {
   R.kernel_rows = kc.rows;
   R.kernel_max_rel = kc.worst;
   chk.report(kc.worst <= kKernelTol,
-             strf("packed Q4_0/Q8_0 dot = dequantize-then-dot on the real weights: %zu sampled rows, max rel err %.1e "
-                  "<= %.0e%s",
-                  kc.rows, kc.worst, kKernelTol, kc.worst_name.empty() ? "" : (" (" + kc.worst_name + ")").c_str()));
+             strf("packed Q4_0/Q8_0 dot (%s) = dequantize-then-dot on the real weights: %zu sampled rows, max rel "
+                  "err %.1e <= %.0e%s",
+                  kern::backend_name(kern::backend()), kc.rows, kc.worst, kKernelTol, kc.worst_name.empty() ? "" : (" (" + kc.worst_name + ")").c_str()));
 
   DistAgg golden, text;
   // ---- 2. golden prompts, teacher-forced, vs PyTorch FP32
@@ -237,7 +241,7 @@ int run_eval_quant(const EvalQuantOptions& o) {
       const std::size_t S = ids.size();
       const std::size_t n_dec = dec.f32.empty() ? 0 : static_cast<std::size_t>(dec.shape.at(0));
       DistAgg pa;
-      Transformer tr(qm, S + gold.size() + 1);
+      Transformer tr(qm, S + gold.size() + 1, o.pool);
       std::vector<float> cur(V);
       for (std::size_t p = 0; p < S; ++p) {
         const bool want = !all.f32.empty() || p + 1 == S;
@@ -311,7 +315,7 @@ int run_eval_quant(const EvalQuantOptions& o) {
     {
       std::printf("    quantized engine ... ");
       std::fflush(stdout);
-      Transformer tq(qm, N);
+      Transformer tq(qm, N, o.pool);
       double fwd_s = 0.0;  // forward passes only, same measurement as for the BF16 engine
       for (std::size_t p = 0; p < N; ++p) {
         const auto f0 = std::chrono::steady_clock::now();
@@ -335,7 +339,7 @@ int run_eval_quant(const EvalQuantOptions& o) {
       if (rc.hidden_size != c.hidden_size || rc.num_hidden_layers != c.num_hidden_layers || rc.vocab_size != c.vocab_size) {
         throw Error("--model-dir is a different model than the .efq file");
       }
-      Transformer tb(ref, N);
+      Transformer tb(ref, N, o.pool);
       double nll_r = 0.0, fwd_s = 0.0;
       for (std::size_t p = 0; p < N; ++p) {
         const auto f0 = std::chrono::steady_clock::now();
@@ -353,7 +357,9 @@ int run_eval_quant(const EvalQuantOptions& o) {
       std::printf("    perplexity: %.3f -> %.3f (%+.2f%%)\n", R.ppl_ref, R.ppl_q, 100.0 * (R.ppl_q / R.ppl_ref - 1.0));
       const double gb_q = R.tps_q * static_cast<double>(qm.weight_bytes_per_token()) / 1e9;
       const double gb_r = R.tps_ref * static_cast<double>(ref.weight_bytes_per_token()) / 1e9;
-      std::printf("\n  speed (scalar kernels, 1 thread; Stage 7 adds SIMD + threads):\n");
+      std::printf("\n  speed (%s kernels, %u thread%s; the full ladder: edgeforge bench-decode):\n",
+                  kern::backend_name(kern::backend()), o.pool != nullptr ? o.pool->size() : 1u,
+                  o.pool != nullptr && o.pool->size() > 1 ? "s" : "");
       std::printf("    BF16 engine     : %.2f tok/s, %s/token -> %.2f GB/s of weights\n", R.tps_ref,
                   human_bytes(ref.weight_bytes_per_token()).c_str(), gb_r);
       std::printf("    quantized engine: %.2f tok/s, %s/token -> %.2f GB/s of weights (%.2fx the BF16 tok/s)\n",

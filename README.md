@@ -3,10 +3,59 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 6: the engine running straight from the packed 4-bit `.efq` weights.**
+> Current milestone: **Stage 7: AVX2 kernels + multi-threaded decoding on the packed 4-bit model.**
 > Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels),
 > `stage3-verified` (full forward pass + KV cache), `stage4-verified` (tokenizer + chat),
-> `stage5-verified` (mixed-precision quantizer: 12/12 checks, 154/154 matrices, 713.0 MiB).
+> `stage5-verified` (mixed-precision quantizer: 12/12 checks, 154/154 matrices, 713.0 MiB),
+> `stage6-verified` (quantized inference: quality targets 5/5, 3.77× faster decode than BF16, 597 MiB RSS).
+
+## Stage 7: SIMD + threads (`include/ef/qkernels.h`, `threadpool.h`, `bench_decode.h`)
+
+```bash
+D=~/edgeforge-data; M=$D/tinyllama; Q=$D/tinyllama-q4.efq
+~/ef-build/edgeforge bench-decode --qmodel $Q            # speed-up ladder; % of peak from bench/membench.json
+~/ef-build/edgeforge bench-decode --model-dir $M         # the same ladder for the BF16 engine
+~/ef-build/edgeforge eval-quant --qmodel $Q --model-dir $M --golden tests/golden --text tests/fixtures/eval_text.txt
+~/ef-build/edgeforge chat --qmodel $Q --tokenizer-dir $M  # defaults: AVX2, one thread per physical core
+```
+
+**What changed.**
+- **AVX2 + FMA + F16C kernels** for Q4_0, Q8_0, BF16 and F32 rows.
+  - **Q4_0 block:** 16 bytes of codes are split into nibbles, recentred (−8) as signed bytes, then widened
+    to 4 × 8 floats. 4 FMAs with the activations form the block sum, and one more FMA applies the FP16
+    scale (converted by F16C, exactly).
+  - **Accumulators:** two, on even and odd blocks, to hide the FMA latency.
+  - **Backends:** `--kernels scalar` keeps the Stage 6 reference path; `auto` uses AVX2 when the build has
+    it. Builds without AVX2 fall back to scalar, and those tests are skipped.
+- **Persistent thread pool:**
+  - matrix rows are split across threads;
+  - workers spin briefly between the ~90 parallel regions of a token, then sleep, so an idle chat does not
+    burn CPU;
+  - q/k/v and gate/up each run as one parallel region (fused jobs);
+  - attention heads are split too.
+  - `--threads N` (default: physical cores).
+- **Determinism:** every output row is computed by one thread with one kernel, so for a given backend the
+  logits are **bit-identical for any thread count** (tested at 1/2/3/5/7/8 threads, and checked by
+  `bench-decode` on every run). AVX2 changes the rounding order (FMA), so AVX2 vs scalar differs by ~1e-6
+  relative. Quality is therefore re-checked with `eval-quant` on the AVX2 path against the same Stage 6
+  targets.
+
+**Tests:**
+- AVX2 kernels vs the exact dot: 7.9e-8 of Σ|w·x|;
+- the thread pool covers every index exactly once (300 repetitions × 5 sizes × 4 pool sizes);
+- parallel GEMV and the whole engine are bit-identical across thread counts for both backends;
+- engine AVX2 vs scalar logits: 1.5e-6.
+
+Clean under ThreadSanitizer, ASan/UBSan and Clang 18 `-Werror`, plus a build without AVX2.
+
+**Sandbox ladder** (2-core Xeon, full-size synthetic weights; laptop numbers come from the WSL run):
+
+| Engine | kernels / threads | decode tok/s | speed-up | outputs |
+|---|---|---|---|---|
+| Q4/Q8 `.efq` | scalar / 1 | 2.34 | 1.00× | reference |
+| | avx2 / 1 | 5.85 | 2.50× | logits rel 1.8e-6, 12/12 tokens same |
+| | avx2 / 2 | 9.05 | 3.87× | bit-identical to 1 thread |
+| BF16 | scalar / 1 → avx2 / 2 | 2.62 → 5.63 | 2.15× | bit-identical to 1 thread |
 
 ## Stage 6: quantized inference (`include/ef/qkernels.h`, `model.h`, `eval_quant.h`)
 
@@ -65,17 +114,42 @@ argmax, and one flip changes the whole continuation.
   tokens);
 - `eval-quant` on a lossless file gives KL 0, PPL ratio 1, and identical greedy tokens.
 
-**Pipeline check on a full-size synthetic checkpoint** (random weights, so the quality numbers mean
-nothing; 1 sandbox core):
-- quantized engine 2.34 tok/s vs BF16 2.02 tok/s (1.16×);
-- quantized engine peak RSS 594–620 MiB vs a 2.2 GB BF16 model.
+**Verified on the real TinyLlama-1.1B-Chat-v1.0 weights (WSL laptop, Ryzen 5 7530U, 1 thread, scalar
+kernels).** Tests 19/19; `eval-quant` 5/5.
 
-Scalar single-thread decode is **compute-bound** (BF16 reaches only ~4 GB/s here). So 3.4× fewer bytes
-gives just 1.16× more tok/s. Once Stage 7's SIMD and threads make decoding memory-bound, the byte saving
-turns into speed.
+| Quality | Target | Measured |
+|---|---|---|
+| Packed kernels vs dequantized math | ≤ 1e-5 | PASS |
+| NaN/Inf logits | none | none |
+| Mean KL(reference ‖ quantized), all positions | ≤ 0.10 | **0.0880** |
+| Top-1 agreement where the reference is confident | ≥ 95% | **98.8%** |
+| Text perplexity, BF16 → quantized | ratio ≤ 1.15 | 14.892 → 16.591 = **1.1141** (+11.4%) |
+| Greedy continuations identical to PyTorch | reported | 4/4 (e.g. "The capital of France is Paris.") |
 
-Real-weight numbers come from the WSL run.
+| Speed / memory | BF16 engine | Quantized engine |
+|---|---|---|
+| Model file | 2.05 GiB | 713 MiB |
+| Weights read per token | 1.93 GiB | 588 MiB |
+| `generate` prefill | 1.61 tok/s | 6.28 tok/s |
+| `generate` decode | 1.54 tok/s | **5.81 tok/s (3.77×)** |
+| `eval-quant` forward passes | 1.53 tok/s ≈ 3.2 GB/s | 6.12 tok/s ≈ 3.8 GB/s (4.00×) |
+| Peak RSS | 1.94 GiB | **597 MiB** |
 
+**What the speed says.**
+- Both kernels cost about the same per *weight*, yet the quantized engine is ~4× faster, and both stream
+  ~3–4 GB/s. So on this laptop one core is limited by how fast it can pull weights from memory, not by
+  arithmetic, and fewer bytes per token turns directly into speed.
+- This is not what the 2-core build sandbox showed (synthetic weights: 2.34 vs 2.02 tok/s, 1.16×). There,
+  the same scalar code was compute-bound. Speed claims therefore come only from the laptop.
+- The membench peak is 18.80 GB/s, so a single scalar thread uses about 20% of the machine's bandwidth.
+  That is the headroom for Stage 7.
+
+**Limits of this evaluation.**
+- The mean KL passes, but not every position is close.
+  - The factual prompt alone has a mean KL of 0.1887.
+  - The worst single position has a KL of 3.0568.
+  - So we do not claim that every token's distribution matches the original model.
+- 4 golden prompts and 128 tokens of text are a small sample. A broader evaluation belongs in Stage 8.
 
 ## Stage 5: quantization (`include/ef/quant.h`, `qfile.h`, `quantizer.h`)
 
@@ -482,12 +556,10 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 7
+## Next: Stage 8
 
-Speed:
-- explicit AVX2 kernels for Q4_0 / Q8_0 (and optionally INT8-quantized activations);
-- multi-threaded GEMV across rows;
-- the speed-up ladder scalar → SIMD → threads, measured in tok/s and in GB/s against the membench
-  peak.
-
-The outputs must stay within the Stage 6 targets, checked with the same `eval-quant`.
+Profiler, benchmarks and demo:
+- a per-op time breakdown (matmul, attention, norms) and roofline-style GB/s vs the membench peak;
+- a reproducible benchmark report (`bench-decode` + `eval-quant` + `sysinfo` in one file);
+- a broader quality evaluation than 4 prompts and 128 tokens;
+- the demo script.
