@@ -3,8 +3,49 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 3: the complete FP32 forward pass with a KV cache**, verified against PyTorch.
-> Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels).
+> Current milestone: **Stage 4: tokenizer + chat**, a working text-to-text engine verified against Hugging Face.
+> Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels),
+> `stage3-verified` (full forward pass + KV cache).
+
+## Stage 4: tokenizer and chat (`include/ef/tokenizer.h`, `sampler.h`, `chat.h`)
+
+```bash
+M=~/edgeforge-data/tinyllama
+~/ef-build/edgeforge chat --model-dir $M                                   # interactive, greedy
+~/ef-build/edgeforge chat --model-dir $M --prompt "What is the capital of France?"   # one-shot
+~/ef-build/edgeforge chat --model-dir $M --temp 0.7 --top-p 0.9 --seed 1   # sampling
+~/ef-build/edgeforge tokenize --tokenizer-dir $M --text "Hello नमस्ते 😀"
+~/ef-build/edgeforge verify-tokenizer --tokenizer-dir tests/fixtures/tinyllama-tokenizer --golden tests/golden \
+                                      --model-dir $M                        # + end-to-end text vs PyTorch
+```
+
+- **Tokenizer:**
+  - reads `tokenizer.json`: 32,000 pieces and 61,249 merges;
+  - BPE in merge-rank order, byte fallback to `<0xXX>`, special-token splitting;
+  - `legacy=false` behaviour: `▁` is prepended only at the start of the text, never after `</s>`.
+- **Decoder:**
+  - `▁` becomes a space, byte runs become UTF-8 (invalid runs become U+FFFD per byte, like HF);
+  - one leading space is stripped;
+  - the streaming decoder holds back a byte run until it is complete, so streamed text always equals the
+    final decode.
+- **Chat:**
+  - TinyLlama/Zephyr template, byte-identical to the Jinja one;
+  - multi-turn, re-uses the KV cache through the longest common token prefix, so earlier turns are not
+    recomputed;
+  - drops the oldest turns when the context is full;
+  - commands `/reset` and `/exit`.
+- **Sampler:**
+  - greedy by default;
+  - `--temp`, `--top-k`, `--top-p`, `--rep-penalty`, `--seed`, applied in HF order.
+- **Verified against HF:**
+  - 122/122 strings for ids, pieces, decode and decode skipping specials;
+  - 10/10 chat-template cases;
+  - 4/4 golden prompts, text → ids and ids → text.
+  - The TinyLlama tokenizer files are committed in `tests/fixtures/` (Apache-2.0), so CTest runs this
+    without the model.
+- **Speed:** prompt processing is still one token at a time (scalar, 1 thread): about 9 s for a 23-token
+  prompt. Batched prefill, threads and SIMD come in Stage 7.
+
 
 ## Stage 3: forward pass (`include/ef/model.h`)
 
@@ -232,8 +273,9 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 4
+## Next: Stage 5
 
-- C++ tokenizer (`tokenizer.json`, SentencePiece-style BPE + byte fallback), verified against
-  `tokenizer_cases.json` (122 strings) and `chat_template_cases.json`.
-- TinyLlama chat template, sampler and a terminal chat.
+Custom quantizer and file format:
+- Q4 group-32 blocks for the layer weights, Q8 for lm_head;
+- 64-byte aligned, mmap-able file;
+- measure reconstruction error, file size, and perplexity / top-1 agreement against the FP32 engine.

@@ -26,13 +26,26 @@
 #include "ef/golden.h"
 #include "ef/model.h"
 #include "ef/verify_forward.h"
+#include "ef/chat.h"
+#include "ef/tokenizer.h"
+#include "ef/verify_tokenizer.h"
+#include <iostream>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.3.0 (stage 3)";
+constexpr const char* kVersion = "0.4.0 (stage 4)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -55,6 +68,10 @@ void print_usage() {
       "  edgeforge verify-forward --golden DIR --model-dir DIR [--prompt NAME]\n"
       "  edgeforge generate --model-dir DIR (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR) [--max-new 32]\n"
       "                     [--eos ID] [--bench FILE]\n"
+      "  edgeforge chat     --model-dir DIR [--prompt TEXT] [--system TEXT] [--max-new 256] [--ctx 2048]\n"
+      "                     [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
+      "  edgeforge tokenize --tokenizer-dir DIR --text TEXT [--no-special]\n"
+      "  edgeforge verify-tokenizer --tokenizer-dir DIR --golden DIR [--model-dir DIR]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -66,7 +83,11 @@ void print_usage() {
       "          norm and lm_head) against PyTorch golden outputs. Exit code 0 = PASS.\n"
       "verify-forward  Stage 3: all layers + KV-cache decoding vs golden (hidden states per layer,\n"
       "          logits at every position, decode logits, greedy tokens). Exit code 0 = PASS.\n"
-      "generate  Greedy decoding from token ids (no tokenizer yet) with tok/s and GB/s.\n",
+      "generate  Greedy decoding from token ids with tok/s and GB/s.\n"
+      "chat      Interactive chat (TinyLlama chat template, streaming, KV cache reused across turns);\n"
+      "          --prompt answers one message and exits. Greedy by default (--temp > 0 to sample).\n"
+      "verify-tokenizer  Stage 4: tokenizer, chat template and decoder vs Hugging Face golden data;\n"
+      "          with --model-dir also prompt text -> EdgeForge -> reply text vs PyTorch.\n",
       kVersion);
 }
 
@@ -81,6 +102,14 @@ struct Args {
   std::string get(const std::string& k, const std::string& def = "") const {
     auto it = opts.find(k);
     return it == opts.end() ? def : it->second;
+  }
+  double get_double(const std::string& k, double def) const {
+    auto it = opts.find(k);
+    if (it == opts.end()) return def;
+    char* end = nullptr;
+    const double v = std::strtod(it->second.c_str(), &end);
+    if (end == it->second.c_str() || *end != '\0') throw Error("--" + k + " expects a number, got '" + it->second + "'");
+    return v;
   }
   long long get_int(const std::string& k, long long def) const {
     auto it = opts.find(k);
@@ -101,10 +130,15 @@ Args parse_args(int argc, char** argv) {
       {"verify-math", {"golden", "model-dir", "prompt", "bench"}},
       {"verify-forward", {"golden", "model-dir", "prompt"}},
       {"generate", {"model-dir", "ids", "ids-from", "max-new", "eos", "bench"}},
+      {"chat", {"model-dir", "tokenizer-dir", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
+                "rep-penalty", "seed"}},
+      {"tokenize", {"tokenizer-dir", "text"}},
+      {"verify-tokenizer", {"tokenizer-dir", "golden", "model-dir"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
-      {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}},
+      {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {}}, {"tokenize", {"no-special"}},
+      {"verify-tokenizer", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -679,6 +713,88 @@ int cmd_generate(const Args& a) {
   return 0;
 }
 
+int cmd_tokenize(const Args& a) {
+  if (!a.has("tokenizer-dir") || !a.has("text")) throw Error("tokenize needs --tokenizer-dir DIR and --text TEXT");
+  const Tokenizer tok = Tokenizer::load(a.get("tokenizer-dir"));
+  const auto ids = tok.encode(a.get("text"), true, !a.has("no-special"));
+  std::printf("%zu tokens (BOS added):\n", ids.size());
+  for (auto id : ids) std::printf("  %6d  %s\n", id, json::escape(tok.piece(id)).c_str());
+  std::printf("decoded back: \"%s\"\n", json::escape(tok.decode(ids, true)).c_str());
+  return 0;
+}
+
+int cmd_chat(const Args& a) {
+  if (!a.has("model-dir")) throw Error("--model-dir DIR is required");
+  const fs::path model_dir = a.get("model-dir");
+  const Model model = Model::load(model_dir);
+  const Tokenizer tok = Tokenizer::load(a.has("tokenizer-dir") ? fs::path(a.get("tokenizer-dir")) : model_dir);
+  ChatOptions o;
+  o.max_seq = static_cast<std::size_t>(std::max(16LL, a.get_int("ctx", model.config().max_position_embeddings)));
+  o.max_new = static_cast<std::size_t>(std::max(1LL, a.get_int("max-new", 256)));
+  o.system_prompt = a.get("system");
+  o.sampler.temperature = static_cast<float>(a.get_double("temp", 0.0));
+  o.sampler.top_k = static_cast<int>(a.get_int("top-k", 0));
+  o.sampler.top_p = static_cast<float>(a.get_double("top-p", 1.0));
+  o.sampler.repetition_penalty = static_cast<float>(a.get_double("rep-penalty", 1.0));
+  o.sampler.seed = static_cast<std::uint64_t>(a.get_int("seed", 0));
+  ChatSession chat(model, tok, o);
+
+  auto print_stats = [](const TurnStats& s) {
+    std::printf("  [prompt %zu tok, %zu reused, %zu computed in %.1f s | reply %zu tok in %.1f s = %.2f tok/s%s%s]\n",
+                s.prompt_tokens, s.reused_tokens, s.prefill_tokens, s.prefill_s, s.generated, s.decode_s,
+                s.decode_s > 0 ? static_cast<double>(s.generated) / s.decode_s : 0.0,
+                s.hit_limit ? ", hit --max-new" : "", s.dropped_messages ? ", oldest turns dropped" : "");
+  };
+  auto stream = [](const std::string& t) {
+    std::fwrite(t.data(), 1, t.size(), stdout);
+    std::fflush(stdout);
+  };
+  if (a.has("prompt")) {  // one-shot
+    TurnStats s;
+    chat.reply(a.get("prompt"), stream, &s);
+    std::printf("\n");
+    print_stats(s);
+    return 0;
+  }
+  const std::string sampling = o.sampler.temperature <= 0 ? std::string("greedy")
+                                                          : strf("temp %.2f, top-k %d, top-p %.2f, seed %llu",
+                                                                 static_cast<double>(o.sampler.temperature), o.sampler.top_k,
+                                                                 static_cast<double>(o.sampler.top_p),
+                                                                 static_cast<unsigned long long>(o.sampler.seed));
+  std::printf("EdgeForge %s - CPU inference engine, no ML libraries\n", kVersion);
+  std::printf("model: %s (%lld layers, FP32 reference kernels, 1 thread) | tokenizer: %zu tokens%s\n",
+              model_dir.filename().string().c_str(), static_cast<long long>(model.config().num_hidden_layers),
+              tok.vocab_size(), tok.chat_template().empty() || is_zephyr_template(tok.chat_template()) ? "" : " (unknown chat template!)");
+  std::printf("sampling: %s | context %zu tokens | commands: /reset  /exit\n\n", sampling.c_str(), o.max_seq);
+  std::string line;
+  while (true) {
+    std::printf("You: ");
+    std::fflush(stdout);
+    if (!std::getline(std::cin, line)) break;
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    if (line == "/exit" || line == "/quit") break;
+    if (line == "/reset") {
+      chat.reset();
+      std::printf("(conversation cleared)\n\n");
+      continue;
+    }
+    std::printf("AI: ");
+    std::fflush(stdout);
+    TurnStats s;
+    try {
+      chat.reply(line, stream, &s);
+    } catch (const Error& e) {
+      std::printf("\n  error: %s\n\n", e.what());
+      continue;
+    }
+    std::printf("\n");
+    print_stats(s);
+    std::printf("\n");
+  }
+  return 0;
+}
+
 int cmd_sysinfo() {
   std::printf("EdgeForge %s - system\n", kVersion);
   print_system(query_system_info());
@@ -688,6 +804,10 @@ int cmd_sysinfo() {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+  SetConsoleOutputCP(CP_UTF8);  // Hindi / emoji in the Windows console
+  SetConsoleCP(CP_UTF8);
+#endif
   try {
     const Args a = parse_args(argc, argv);
     if (a.command.empty() || a.command == "help" || a.command == "--help" || a.command == "-h") {
@@ -711,6 +831,16 @@ int main(int argc, char** argv) {
       return run_verify_forward(o);
     }
     if (a.command == "generate") return cmd_generate(a);
+    if (a.command == "chat") return cmd_chat(a);
+    if (a.command == "tokenize") return cmd_tokenize(a);
+    if (a.command == "verify-tokenizer") {
+      if (!a.has("golden") || !a.has("tokenizer-dir")) throw Error("verify-tokenizer needs --tokenizer-dir DIR and --golden DIR");
+      VerifyTokenizerOptions o;
+      o.golden_dir = a.get("golden");
+      o.tokenizer_dir = a.get("tokenizer-dir");
+      o.model_dir = a.get("model-dir");
+      return run_verify_tokenizer(o);
+    }
     if (a.command == "verify-math") {
       if (!a.has("golden")) throw Error("--golden DIR is required (folder written by tools/dump_reference.py)");
       VerifyMathOptions o;

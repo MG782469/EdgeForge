@@ -13,7 +13,9 @@
 
 #include "ef/fp16.h"
 #include "ef/kernels.h"
+#include "ef/chat.h"
 #include "ef/model.h"
+#include "ef/tokenizer.h"
 #include "test_framework.h"
 #include "test_util.h"
 
@@ -40,7 +42,7 @@ struct TinyDir {
         << "{\"model_type\":\"llama\",\"hidden_size\":" << t.D << ",\"intermediate_size\":" << t.F
         << ",\"num_hidden_layers\":" << t.L << ",\"num_attention_heads\":" << t.H
         << ",\"num_key_value_heads\":" << t.KV << ",\"vocab_size\":" << t.V
-        << ",\"rms_norm_eps\":1e-05,\"rope_theta\":10000.0,\"max_position_embeddings\":64,"
+        << ",\"rms_norm_eps\":1e-05,\"rope_theta\":10000.0,\"max_position_embeddings\":256,"
         << "\"tie_word_embeddings\":" << (t.tied ? "true" : "false") << ",\"bos_token_id\":1,\"eos_token_id\":2}";
     std::vector<std::pair<std::string, std::vector<std::uint64_t>>> list = {{"model.embed_tokens.weight", {t.V, t.D}}};
     for (std::size_t l = 0; l < t.L; ++l) {
@@ -249,7 +251,7 @@ TEST(model_forward_rejects_bad_input) {
   for (std::size_t p = 0; p < 4; ++p) tr.forward(1, p, false);
   CHECK_THROWS(tr.forward(1, 4), "KV-cache capacity");
   CHECK(tr.forward(1, 3, false) == nullptr);
-  CHECK_THROWS(Transformer(m, 65), "max_position_embeddings");
+  CHECK_THROWS(Transformer(m, 257), "max_position_embeddings");
   CHECK_THROWS(Transformer(m, 0), "must be > 0");
 }
 
@@ -289,4 +291,54 @@ TEST(model_tied_embeddings) {
   const float* logits = nullptr;
   for (std::size_t p = 0; p < kIds.size(); ++p) logits = tr.forward(kIds[p], p);
   CHECK(max_rel(logits, ref.logits.back()) < 1e-5);
+}
+
+TEST(chat_session_multi_turn_reuses_kv_cache) {
+  Tiny t;
+  t.V = 272;  // matches the synthetic tokenizer
+  const TinyDir d(t, 3);
+  const Model m = Model::load(d.path);
+  const Tokenizer tok = Tokenizer::from_json(ef_test::mini_tokenizer_json(), ef_test::mini_tokenizer_config());
+  ChatOptions o;
+  o.max_seq = 256;
+  o.max_new = 4;
+  o.system_prompt = "h";
+  ChatSession chat(m, tok, o);
+  std::string streamed;
+  TurnStats s1, s2;
+  const std::string r1 = chat.reply("ab", [&](const std::string& x) { streamed += x; }, &s1);
+  CHECK_EQ(streamed, r1);  // streaming output == final reply text
+  CHECK_EQ(s1.reused_tokens, std::size_t{0});
+  CHECK(s1.generated <= 4 && s1.prompt_tokens > 0);
+  CHECK_EQ(chat.messages().size(), std::size_t{3});  // system, user, assistant
+  const std::string r2 = chat.reply("abc", {}, &s2);
+  CHECK(s2.reused_tokens >= s1.prompt_tokens);  // turn 1 is never recomputed
+  CHECK(s2.prefill_tokens < s2.prompt_tokens);
+  ChatSession again(m, tok, o);  // greedy: same conversation -> same replies
+  CHECK_EQ(again.reply("ab"), r1);
+  CHECK_EQ(again.reply("abc"), r2);
+  chat.reset();
+  CHECK_EQ(chat.messages().size(), std::size_t{1});
+  CHECK_EQ(chat.cached_tokens(), std::size_t{0});
+  o.max_seq = 64;  // small context: long messages are rejected, old turns get dropped
+  ChatSession small(m, tok, o);
+  CHECK_THROWS(small.reply(std::string(200, 'a')), "too long");
+  CHECK_EQ(small.messages().size(), std::size_t{1});  // the rejected message is not kept
+  std::size_t dropped = 0;
+  for (int turn = 0; turn < 5; ++turn) {
+    TurnStats s;
+    small.reply("abab", {}, &s);
+    dropped += s.dropped_messages;
+    CHECK(s.prompt_tokens + s.generated <= o.max_seq);
+  }
+  CHECK(dropped > 0);
+  CHECK_EQ(small.messages().front().role, std::string("system"));
+}
+
+TEST(chat_rejects_tokenizer_larger_than_model) {
+  const Tiny t;  // V = 11
+  const TinyDir d(t);
+  const Model m = Model::load(d.path);
+  const Tokenizer tok = Tokenizer::from_json(ef_test::mini_tokenizer_json(), ef_test::mini_tokenizer_config());
+  CHECK_THROWS(ChatSession(m, tok, ChatOptions{}), "tokenizer has 272 tokens");
 }

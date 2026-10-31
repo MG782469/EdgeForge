@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.3.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +83,10 @@ add_library(ef_core STATIC
   src/verify_math.cpp
   src/model.cpp
   src/verify_forward.cpp
+  src/tokenizer.cpp
+  src/sampler.cpp
+  src/chat.cpp
+  src/verify_tokenizer.cpp
 )
 target_include_directories(ef_core PUBLIC include)
 target_link_libraries(ef_core PUBLIC Threads::Threads)
@@ -111,12 +115,13 @@ add_executable(ef_tests
   tests/test_kernels.cpp
   tests/test_golden.cpp
   tests/test_model.cpp
+  tests/test_tokenizer.cpp
 )
 target_link_libraries(ef_tests PRIVATE ef_core)
 target_include_directories(ef_tests PRIVATE tests)
 ef_configure(ef_tests)
 
-foreach(suite json fp16 safetensors config membench kernels golden model)
+foreach(suite json fp16 safetensors config membench kernels golden model tokenizer sampler chat)
   add_test(NAME ${suite} COMMAND ef_tests ${suite})
 endforeach()
 
@@ -132,6 +137,19 @@ if(EF_GOLDEN_DIR)
     set_tests_properties(golden_forward PROPERTIES TIMEOUT 1800)
   else()
     add_test(NAME golden_math COMMAND edgeforge verify-math --golden "${EF_GOLDEN_DIR}")
+  endif()
+endif()
+
+# Stage 4: tokenizer vs Hugging Face (tokenizer files are committed under tests/fixtures).
+set(EF_TOKENIZER_DIR "${CMAKE_SOURCE_DIR}/tests/fixtures/tinyllama-tokenizer")
+if(EF_GOLDEN_DIR AND EXISTS "${EF_TOKENIZER_DIR}/tokenizer.json")
+  add_test(NAME golden_tokenizer
+           COMMAND edgeforge verify-tokenizer --tokenizer-dir "${EF_TOKENIZER_DIR}" --golden "${EF_GOLDEN_DIR}")
+  if(EF_MODEL_DIR)
+    add_test(NAME golden_text_e2e
+             COMMAND edgeforge verify-tokenizer --tokenizer-dir "${EF_TOKENIZER_DIR}" --golden "${EF_GOLDEN_DIR}"
+                     --model-dir "${EF_MODEL_DIR}")
+    set_tests_properties(golden_text_e2e PROPERTIES TIMEOUT 1800)
   endif()
 endif()
 
