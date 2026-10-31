@@ -15,7 +15,7 @@ DEFS=("-DEF_BUILD_TYPE=\"Release\"" "-DEF_BUILD_FLAGS=\"-O3 -DNDEBUG $ARCH -ffp-
 
 echo "compiler: $("$CXX" --version | head -1)"
 objs=()
-for s in json mapped_file safetensors model_config membench sysinfo kernels golden verify_math model verify_forward tokenizer sampler chat verify_tokenizer quant qfile quantizer verify_quant; do
+for s in json mapped_file safetensors model_config membench sysinfo kernels golden verify_math model verify_forward tokenizer sampler chat verify_tokenizer quant qfile quantizer verify_quant qkernels eval_quant; do
   echo "  CXX src/$s.cpp"
   "$CXX" "${FLAGS[@]}" "${DEFS[@]}" -c "$ROOT/src/$s.cpp" -o "$OUT/obj/$s.o"
   objs+=("$OUT/obj/$s.o")

@@ -3,10 +3,79 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 5: our own mixed-precision 4-bit quantizer and `.efq` model file**
-> (verified on the real weights: 12/12 checks, 154/154 matrices, 713.0 MiB).
+> Current milestone: **Stage 6: the engine running straight from the packed 4-bit `.efq` weights.**
 > Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels),
-> `stage3-verified` (full forward pass + KV cache), `stage4-verified` (tokenizer + chat).
+> `stage3-verified` (full forward pass + KV cache), `stage4-verified` (tokenizer + chat),
+> `stage5-verified` (mixed-precision quantizer: 12/12 checks, 154/154 matrices, 713.0 MiB).
+
+## Stage 6: quantized inference (`include/ef/qkernels.h`, `model.h`, `eval_quant.h`)
+
+```bash
+D=~/edgeforge-data; M=$D/tinyllama; Q=$D/tinyllama-q4.efq      # Q from tools/quantize_tinyllama.sh
+~/ef-build/edgeforge eval-quant --qmodel $Q --model-dir $M --golden tests/golden --text tests/fixtures/eval_text.txt
+~/ef-build/edgeforge generate --qmodel $Q --ids-from tests/golden/prompts/p0_factual --max-new 16   # 4-bit engine
+~/ef-build/edgeforge generate --model-dir $M --ids-from tests/golden/prompts/p0_factual --max-new 16 # BF16 engine
+~/ef-build/edgeforge chat --qmodel $Q --tokenizer-dir $M                                            # 4-bit chat
+```
+
+**How it runs.**
+- `Model::load_efq` maps the `.efq` file and points every matrix at its packed bytes (`WeightView`:
+  type, data, rows, cols). **Nothing is dequantized ahead of time**: no FP32 copy of the model exists.
+- `kern::matvec` picks the kernel per tensor, because the file is mixed precision (148 Q4_0 + 6 Q8_0 layer
+  matrices, Q8_0 lm_head, BF16 embedding).
+  - **BF16:** exactly the Stage 2 kernel. The reference engine is unchanged: `verify-forward` output is
+    identical before and after this stage.
+- Packed dot products read the 18-byte Q4_0 / 34-byte Q8_0 blocks in place:
+  `Q4_0: d · Σ (code_j − 8) · x_j`, `Q8_0: d · Σ q_j · x_j`.
+  - The scale is applied once per block.
+  - 32 FP32 lane accumulators run across the row, with a fixed final summation order.
+  - The scalar C++ is shaped so GCC/Clang auto-vectorise it.
+  - **Per-weight speed:** equal to the BF16 kernel. Sandbox micro-benchmark, 5632×2048: BF16 3.05,
+    Q4_0 2.89, Q8_0 2.77 Gweights/s. Each Q4_0 weight costs 0.56 bytes instead of 2.
+- Chat, the KV cache and multi-turn reuse work unchanged on the quantized model: `ChatSession` only sees
+  a `Model`.
+
+**`eval-quant`: what is measured.**
+1. **Kernels on the real weights:** 16 sampled rows of every Q4_0/Q8_0 matrix. The packed dot must equal
+   the dequantize-then-dot in double precision (relative error ≤ 1e-5 of Σ|w·x|).
+2. **vs PyTorch FP32 (golden), teacher-forced.**
+   - Positions: every position of `p0`, the last position of `p1`–`p3`, and 2 decode steps each.
+   - Metrics: KL(reference ‖ quantized), top-1 agreement, and the greedy continuation of every prompt.
+     For greedy, the KV cache is rewound at the first difference and our own continuation is shown.
+3. **Text perplexity** on `tests/fixtures/eval_text.txt` (first 128 tokens), BF16 engine vs quantized
+   engine, with KL and top-1 at every position.
+4. **Speed and memory:** tok/s and GB/s of weights for both engines, and the quantized engine's peak RSS.
+
+**Quality targets, fixed before the first real-model run:**
+
+| Target | Bound | Why |
+|---|---|---|
+| Mean KL(reference ‖ quantized) | ≤ 0.10 nats per position | the distribution must stay close everywhere |
+| Top-1 agreement where the reference is confident (p ≥ 0.5) | ≥ 95% | when the model is sure, quantization must not change the answer |
+| Text perplexity ratio | ≤ 1.15 | at most 15% more surprised by ordinary text |
+
+Plain top-1 agreement and greedy identity are **reported, not targets**: at near-ties any noise flips the
+argmax, and one flip changes the whole continuation.
+
+**Tests (all on tiny models, no real weights needed):**
+- packed kernels vs dequantized weights on random blocks of every bit pattern, the nibble layout by hand,
+  and dispatch for all 5 types;
+- a lossless `.efq` (all BF16) runs **bit-identically** to the safetensors engine (tied and untied);
+- the quantized engine matches an F32 copy of its own dequantized weights (max rel err 1.7e-6, same greedy
+  tokens);
+- `eval-quant` on a lossless file gives KL 0, PPL ratio 1, and identical greedy tokens.
+
+**Pipeline check on a full-size synthetic checkpoint** (random weights, so the quality numbers mean
+nothing; 1 sandbox core):
+- quantized engine 2.34 tok/s vs BF16 2.02 tok/s (1.16×);
+- quantized engine peak RSS 594–620 MiB vs a 2.2 GB BF16 model.
+
+Scalar single-thread decode is **compute-bound** (BF16 reaches only ~4 GB/s here). So 3.4× fewer bytes
+gives just 1.16× more tok/s. Once Stage 7's SIMD and threads make decoding memory-bound, the byte saving
+turns into speed.
+
+Real-weight numbers come from the WSL run.
+
 
 ## Stage 5: quantization (`include/ef/quant.h`, `qfile.h`, `quantizer.h`)
 
@@ -23,7 +92,8 @@ bash tools/quantize_tinyllama.sh ~/edgeforge-data/tinyllama ~/edgeforge-data/tin
 ```
 
 The output is byte-identical for any thread count, so re-running gives the same sha256 (the script
-prints it).
+prints it). The verified file (WSL laptop, `stage5-verified` binary) has sha256
+`83c742061eea567a7387baf4a676e70328c021abe9f78715cc2a09948af08e80`.
 
 **Verified on the real TinyLlama-1.1B-Chat-v1.0 weights (WSL laptop, 2026-10-31).**
 
@@ -285,6 +355,7 @@ tools/
   make_synthetic_golden.py     float64 numpy layer-0 golden data for a synthetic checkpoint
   build.sh                     build + test without CMake
   quantize_tinyllama.sh        reproduce + verify the Stage 5 model from the BF16 checkpoint
+tests/fixtures/eval_text.txt   fixed text for the Stage 6 perplexity comparison
 docs/              architecture.md, golden_format.md
 ```
 
@@ -411,11 +482,12 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 6
+## Next: Stage 7
 
-Quantized inference:
-- Q4_0 × FP32 and Q8_0 × FP32 GEMV kernels that work directly on the packed blocks, tested against
-  dequantize-then-GEMV, dispatched per tensor type (layer matrices can be Q4_0 or Q8_0);
-- the engine and chat running from the `.efq` file;
-- quality vs the FP32 engine: top-1 agreement, KL divergence and perplexity on a fixed text;
-- tok/s and GB/s (still scalar and 1 thread; speed comes in Stage 7).
+Speed:
+- explicit AVX2 kernels for Q4_0 / Q8_0 (and optionally INT8-quantized activations);
+- multi-threaded GEMV across rows;
+- the speed-up ladder scalar → SIMD → threads, measured in tok/s and in GB/s against the membench
+  peak.
+
+The outputs must stay within the Stage 6 targets, checked with the same `eval-quant`.

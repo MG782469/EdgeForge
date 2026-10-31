@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.5.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,6 +91,8 @@ add_library(ef_core STATIC
   src/qfile.cpp
   src/quantizer.cpp
   src/verify_quant.cpp
+  src/qkernels.cpp
+  src/eval_quant.cpp
 )
 target_include_directories(ef_core PUBLIC include)
 target_link_libraries(ef_core PUBLIC Threads::Threads)
@@ -121,12 +123,13 @@ add_executable(ef_tests
   tests/test_model.cpp
   tests/test_tokenizer.cpp
   tests/test_quant.cpp
+  tests/test_qinfer.cpp
 )
 target_link_libraries(ef_tests PRIVATE ef_core)
 target_include_directories(ef_tests PRIVATE tests)
 ef_configure(ef_tests)
 
-foreach(suite json fp16 safetensors config membench kernels golden model tokenizer sampler chat quant qfile)
+foreach(suite json fp16 safetensors config membench kernels golden model tokenizer sampler chat quant qfile qinfer)
   add_test(NAME ${suite} COMMAND ef_tests ${suite})
 endforeach()
 

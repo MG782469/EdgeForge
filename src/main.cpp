@@ -27,6 +27,7 @@
 #include "ef/model.h"
 #include "ef/verify_forward.h"
 #include "ef/chat.h"
+#include "ef/eval_quant.h"
 #include "ef/tokenizer.h"
 #include "ef/verify_tokenizer.h"
 #include "ef/quantizer.h"
@@ -47,7 +48,7 @@ using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.5.0 (stage 5)";
+constexpr const char* kVersion = "0.6.0 (stage 6)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -68,9 +69,10 @@ void print_usage() {
       "                     [--warmup 1] [--force] [--json FILE]\n"
       "  edgeforge verify-math --golden DIR [--model-dir DIR] [--prompt p0_factual] [--bench FILE]\n"
       "  edgeforge verify-forward --golden DIR --model-dir DIR [--prompt NAME]\n"
-      "  edgeforge generate --model-dir DIR (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR) [--max-new 32]\n"
-      "                     [--eos ID] [--bench FILE]\n"
-      "  edgeforge chat     --model-dir DIR [--prompt TEXT] [--system TEXT] [--max-new 256] [--ctx 2048]\n"
+      "  edgeforge generate (--model-dir DIR | --qmodel FILE.efq) (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR)\n"
+      "                     [--max-new 32] [--eos ID] [--bench FILE]\n"
+      "  edgeforge chat     (--model-dir DIR | --qmodel FILE.efq --tokenizer-dir DIR) [--prompt TEXT] [--system TEXT]\n"
+      "                     [--max-new 256] [--ctx 2048]\n"
       "                     [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
       "  edgeforge tokenize --tokenizer-dir DIR --text TEXT [--no-special]\n"
       "  edgeforge verify-tokenizer --tokenizer-dir DIR --golden DIR [--model-dir DIR]\n"
@@ -78,6 +80,8 @@ void print_usage() {
       "                     [--layers q4_0] [--lm-head q8_0] [--embed bf16] [--no-search] [--threads N]\n"
       "  edgeforge verify-quant --qmodel FILE.efq --model-dir DIR [--golden DIR] [--threads N]\n"
       "  edgeforge quant-analyze --model-dir DIR [--golden DIR]\n"
+      "  edgeforge eval-quant --qmodel FILE.efq [--model-dir DIR] [--golden DIR] [--text FILE] [--max-tokens 128]\n"
+      "                     [--tokenizer-dir DIR]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -101,7 +105,11 @@ void print_usage() {
       "verify-quant  Reconstruction error of every tensor, lossless parts bit-exact, determinism,\n"
       "          file size and bytes/token; with --golden also the output error of every layer\n"
       "          matrix on real activations, overrides vs uniform, and a measured fix for failures.\n"
-      "quant-analyze  Error of Q4 g32/g64/g128, absmax vs MSE scale search, and Q8 on sampled weights.\n",
+      "quant-analyze  Error of Q4 g32/g64/g128, absmax vs MSE scale search, and Q8 on sampled weights.\n"
+      "eval-quant  Stage 6: the engine on the packed .efq weights - kernel check on the real weights,\n"
+      "          KL / top-1 vs PyTorch (golden, teacher-forced), greedy continuations, text perplexity\n"
+      "          vs the BF16 engine (--model-dir), tok/s, GB/s and peak RSS. Exit code 0 = PASS.\n"
+      "--qmodel  generate / chat run the quantized engine straight from an .efq file.\n",
       kVersion);
 }
 
@@ -143,19 +151,21 @@ Args parse_args(int argc, char** argv) {
       {"sysinfo", {}},
       {"verify-math", {"golden", "model-dir", "prompt", "bench"}},
       {"verify-forward", {"golden", "model-dir", "prompt"}},
-      {"generate", {"model-dir", "ids", "ids-from", "max-new", "eos", "bench"}},
-      {"chat", {"model-dir", "tokenizer-dir", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
+      {"generate", {"model-dir", "qmodel", "ids", "ids-from", "max-new", "eos", "bench"}},
+      {"chat", {"model-dir", "qmodel", "tokenizer-dir", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
                 "rep-penalty", "seed"}},
       {"tokenize", {"tokenizer-dir", "text"}},
       {"verify-tokenizer", {"tokenizer-dir", "golden", "model-dir"}},
       {"quantize", {"model-dir", "out", "policy", "layers", "lm-head", "embed", "override", "threads"}},
       {"verify-quant", {"qmodel", "model-dir", "golden", "threads"}},
       {"quant-analyze", {"model-dir", "golden"}},
+      {"eval-quant", {"qmodel", "model-dir", "golden", "text", "max-tokens", "tokenizer-dir"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
       {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {}}, {"tokenize", {"no-special"}},
       {"verify-tokenizer", {}}, {"quantize", {"no-search"}}, {"verify-quant", {}}, {"quant-analyze", {}},
+      {"eval-quant", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -682,8 +692,15 @@ int cmd_membench(const Args& a) {
   return all_ok ? 0 : 1;
 }
 
+// The BF16 reference (--model-dir) or the quantized engine on an .efq file (--qmodel).
+Model load_engine_model(const Args& a) {
+  if (a.has("qmodel") && a.has("model-dir")) throw Error("give either --model-dir (BF16) or --qmodel (.efq), not both");
+  if (a.has("qmodel")) return Model::load_efq(a.get("qmodel"));
+  if (!a.has("model-dir")) throw Error("--model-dir DIR (BF16) or --qmodel FILE.efq is required");
+  return Model::load(a.get("model-dir"));
+}
+
 int cmd_generate(const Args& a) {
-  if (!a.has("model-dir")) throw Error("--model-dir DIR is required");
   std::vector<std::int32_t> ids;
   if (a.has("ids-from")) {
     ids = GoldenPrompt::open(a.get("ids-from")).input_ids();
@@ -693,12 +710,13 @@ int cmd_generate(const Args& a) {
     throw Error("give the prompt as --ids 1,529,... or --ids-from tests/golden/prompts/<name>");
   }
   const auto t_load = std::chrono::steady_clock::now();
-  const Model m = Model::load(a.get("model-dir"));
+  const Model m = load_engine_model(a);
   const double load_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_load).count();
   const auto max_new = static_cast<std::size_t>(std::max(1LL, a.get_int("max-new", 32)));
   const auto eos = static_cast<std::int32_t>(a.get_int("eos", m.config().eos_token_id));
   Transformer tr(m, ids.size() + max_new);
-  std::printf("EdgeForge %s - generate (scalar FP32 reference engine, 1 thread)\n", kVersion);
+  std::printf("EdgeForge %s - generate (scalar kernels, FP32 activations, 1 thread)\n", kVersion);
+  std::printf("model: %s\n", m.description().c_str());
   std::printf("model loaded (mmap) in %.2f s | KV cache %s | %s of weights per token\n", load_s,
               human_bytes(tr.kv_cache_bytes()).c_str(), human_bytes(m.weight_bytes_per_token()).c_str());
   std::string p;
@@ -741,9 +759,11 @@ int cmd_tokenize(const Args& a) {
 }
 
 int cmd_chat(const Args& a) {
-  if (!a.has("model-dir")) throw Error("--model-dir DIR is required");
+  if (a.has("qmodel") && !a.has("tokenizer-dir") && !a.has("model-dir")) {
+    throw Error("chat --qmodel needs --tokenizer-dir DIR (the folder with tokenizer.json)");
+  }
   const fs::path model_dir = a.get("model-dir");
-  const Model model = Model::load(model_dir);
+  const Model model = a.has("qmodel") ? Model::load_efq(a.get("qmodel")) : load_engine_model(a);
   const Tokenizer tok = Tokenizer::load(a.has("tokenizer-dir") ? fs::path(a.get("tokenizer-dir")) : model_dir);
   ChatOptions o;
   o.max_seq = static_cast<std::size_t>(std::max(16LL, a.get_int("ctx", model.config().max_position_embeddings)));
@@ -779,8 +799,9 @@ int cmd_chat(const Args& a) {
                                                                  static_cast<double>(o.sampler.top_p),
                                                                  static_cast<unsigned long long>(o.sampler.seed));
   std::printf("EdgeForge %s - CPU inference engine, no ML libraries\n", kVersion);
-  std::printf("model: %s (%lld layers, FP32 reference kernels, 1 thread) | tokenizer: %zu tokens%s\n",
-              model_dir.filename().string().c_str(), static_cast<long long>(model.config().num_hidden_layers),
+  std::printf("model: %s (%lld layers, %s, scalar kernels, 1 thread) | tokenizer: %zu tokens%s\n",
+              (a.has("qmodel") ? fs::path(a.get("qmodel")) : model_dir).filename().string().c_str(),
+              static_cast<long long>(model.config().num_hidden_layers), model.description().c_str(),
               tok.vocab_size(), tok.chat_template().empty() || is_zephyr_template(tok.chat_template()) ? "" : " (unknown chat template!)");
   std::printf("sampling: %s | context %zu tokens | commands: /reset  /exit\n\n", sampling.c_str(), o.max_seq);
   std::string line;
@@ -929,6 +950,17 @@ int main(int argc, char** argv) {
       o.golden_dir = a.get("golden");
       o.threads = static_cast<unsigned>(std::max(0LL, a.get_int("threads", 0)));
       return run_verify_quant(o);
+    }
+    if (a.command == "eval-quant") {
+      if (!a.has("qmodel")) throw Error("eval-quant needs --qmodel FILE.efq");
+      EvalQuantOptions o;
+      o.qmodel = a.get("qmodel");
+      o.model_dir = a.get("model-dir");
+      o.golden_dir = a.get("golden");
+      o.text_file = a.get("text");
+      o.tokenizer_dir = a.get("tokenizer-dir");
+      o.max_text_tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("max-tokens", 128)));
+      return run_eval_quant(o);
     }
     if (a.command == "quant-analyze") {
       if (!a.has("model-dir")) throw Error("quant-analyze needs --model-dir DIR");

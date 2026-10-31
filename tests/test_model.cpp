@@ -130,7 +130,7 @@ TEST(model_load_validates_and_counts_bytes) {
   const TinyDir d(t);
   const Model m = Model::load(d.path);
   CHECK_EQ(m.n_layers(), std::size_t{2});
-  CHECK(m.lm_head() != m.embed_tokens());
+  CHECK(m.lm_head().data != m.embed_tokens().data);
   // per token: 2 layers x (q,k,v,o,gate,up,down + 2 norms) + final norm + lm_head, BF16
   const std::uint64_t per_layer = (16 * 16 * 2 + 8 * 16 * 2 + 24 * 16 * 3 + 16 * 2) * 2;
   CHECK_EQ(m.weight_bytes_per_token(), 2 * per_layer + 16 * 2 + 11 * 16 * 2);
@@ -220,7 +220,7 @@ TEST(model_tied_embeddings) {
   t.tied = true;
   const TinyDir d(t, 7);
   const Model m = Model::load(d.path);
-  CHECK(m.lm_head() == m.embed_tokens());
+  CHECK(m.lm_head().data == m.embed_tokens().data);
   const RefOut ref = reference_forward(t, d.w, kIds);
   Transformer tr(m, 16);
   const float* logits = nullptr;

@@ -19,7 +19,7 @@ B. per prompt:  text -> tokenizer -> [embed -> 22 x (RMSNorm, QKV, RoPE, GQA att
 | 3 ✅ | FP32 forward pass + KV cache | `edgeforge verify-forward` PASS on all golden prompts |
 | 4 ✅ | Tokenizer, chat template, sampler | `verify-tokenizer` 122/122 + chat template + end-to-end text vs PyTorch |
 | 5 ✅ | Quantizer + `.efq` file format | `verify-quant` 12/12 on the real weights: reconstruction, determinism, GEMV cosine of all 154 layer matrices on real activations |
-| 6 | Q4 inference | top-1 agreement / KL vs FP32 engine |
+| 6 | Q4 inference straight from the packed `.efq` | `eval-quant`: kernels = dequantized math; mean KL ≤ 0.10, confident top-1 ≥ 95%, PPL ratio ≤ 1.15 vs FP32/BF16 |
 | 7 | Threads + SIMD (+ INT8 activations) | same outputs, speed-up ladder |
 | 8 | Profiler, benchmarks, demo | reproducible report |
 
@@ -60,8 +60,8 @@ struct BlockQ8 { uint16_t d; int8_t qs[32]; };   // 8.5 bits/weight (lm_head + o
 // (Q4_0 / Q8_0 / BF16 / F32) - never assume "all layer matrices are Q4_0".
 
 void matvec_f32(float* y, const float* W, const float* x, int rows, int cols);
-void matvec_q4 (float* y, const BlockQ4* W, const float* x, int rows, int cols);
-void matvec_q8 (float* y, const BlockQ8* W, const float* x, int rows, int cols);
+// Stage 6 (include/ef/qkernels.h): WeightView{type, data, rows, cols} -> kern::matvec(y, W, x)
+// dispatches per tensor; kern::matvec_q4_0 / matvec_q8_0 read the packed blocks in place.
 
 // KV cache: k[layer][pos][n_kv_heads * head_dim], v likewise (FP32 first, FP16 later).
 // RoPE: Hugging Face half-split - dim i rotates with dim i + head_dim/2 (NOT adjacent pairs).

@@ -19,6 +19,7 @@
 #include "ef/verify_quant.h"
 #include "test_framework.h"
 #include "test_util.h"
+#include "engine_golden.h"
 #include "tiny_model.h"
 
 using namespace ef;
@@ -241,54 +242,6 @@ std::size_t find_after(const std::vector<std::uint8_t>& f, const std::string& wh
   return text.find(what, from);
 }
 
-// Golden prompt data in the tools/dump_reference.py layout, produced by the verified engine:
-// the residual stream entering every layer (all positions if `full`, else the last one).
-void write_engine_golden(const std::filesystem::path& model_dir, const std::filesystem::path& dir,
-                         const std::vector<std::int32_t>& ids, bool full) {
-  namespace fs = std::filesystem;
-  const Model m = Model::load(model_dir);
-  const ModelConfig& c = m.config();
-  const auto D = static_cast<std::size_t>(c.hidden_size), L = static_cast<std::size_t>(c.num_hidden_layers);
-  const auto V = static_cast<std::size_t>(c.vocab_size), S = ids.size();
-  Transformer t(m, S);
-  ForwardTrace tr;
-  tr.capture = true;
-  std::vector<float> embed_all(S * D), hidden_all(L * S * D), final_last(D), logits_last(V);
-  for (std::size_t s = 0; s < S; ++s) {
-    kern::embedding_bf16(embed_all.data() + s * D, m.embed_tokens(), static_cast<std::size_t>(ids[s]), D);
-    const float* lg = t.forward(ids[s], s, true, &tr);
-    for (std::size_t l = 0; l < L; ++l) {
-      std::copy_n(tr.layer_out.data() + l * D, D, hidden_all.data() + (l * S + s) * D);
-    }
-    if (s + 1 == S) {
-      final_last = tr.final_norm;
-      logits_last.assign(lg, lg + V);
-    }
-  }
-  std::vector<float> embed_last(embed_all.end() - static_cast<std::ptrdiff_t>(D), embed_all.end()), hidden_last(L * D);
-  for (std::size_t l = 0; l < L; ++l) std::copy_n(hidden_all.data() + (l * S + S - 1) * D, D, hidden_last.data() + l * D);
-  fs::create_directories(dir);
-  std::string files;
-  auto put = [&](const std::string& key, const void* data, std::size_t bytes, const std::string& dtype,
-                 const std::string& shape) {
-    std::ofstream(dir / (key + ".bin"), std::ios::binary).write(static_cast<const char*>(data), static_cast<std::streamsize>(bytes));
-    files += (files.empty() ? "" : ",") + std::string("\"") + key + "\":{\"file\":\"" + key + ".bin\",\"dtype\":\"" +
-             dtype + "\",\"shape\":" + shape + "}";
-  };
-  const std::string d = std::to_string(D), l = std::to_string(L), s = std::to_string(S);
-  put("input_ids", ids.data(), S * 4, "i32", "[" + s + "]");
-  put("embed_last", embed_last.data(), D * 4, "f32", "[" + d + "]");
-  put("hidden_last", hidden_last.data(), L * D * 4, "f32", "[" + l + "," + d + "]");
-  put("final_norm_last", final_last.data(), D * 4, "f32", "[" + d + "]");
-  put("logits_last", logits_last.data(), V * 4, "f32", "[" + std::to_string(V) + "]");
-  if (full) {
-    put("embed_all", embed_all.data(), S * D * 4, "f32", "[" + s + "," + d + "]");
-    put("hidden_all", hidden_all.data(), L * S * D * 4, "f32", "[" + l + "," + s + "," + d + "]");
-  }
-  std::ofstream(dir / "manifest.json") << "{\"format\":\"edgeforge-golden-v1\",\"name\":\"" << dir.filename().string()
-                                       << "\",\"n_tokens\":" << S << ",\"files\":{" << files << "}}";
-}
-
 const GemvCheck* gemv_of(const VerifyQuantReport& r, const std::string& name) {
   for (const auto& g : r.gemv) {
     if (g.tensor == name) return &g;
@@ -397,8 +350,8 @@ TEST(qfile_verify_measures_every_layer_on_real_activations) {
   const ef_test::Tiny t = tiny32();
   const ef_test::TinyDir d(t, 32);
   const auto golden = d.path / "golden";
-  write_engine_golden(d.path, golden / "prompts" / "p0_full", {1, 5, 7, 3, 9, 2}, true);
-  write_engine_golden(d.path, golden / "prompts" / "p1_last", {1, 4, 8, 6}, false);
+  ef_test::write_engine_golden(d.path, golden / "prompts" / "p0_full", {1, 5, 7, 3, 9, 2}, true);
+  ef_test::write_engine_golden(d.path, golden / "prompts" / "p1_last", {1, 4, 8, 6}, false);
   QuantizeOptions o;
   o.overrides = parse_overrides("model.layers.0.self_attn.k_proj.weight=q8_0,model.layers.0.self_attn.v_proj.weight=q8_0");
   quantize_model(d.path, d.path / "m.efq", o);
@@ -462,7 +415,7 @@ TEST(qfile_verify_flags_a_sensitive_matrix_and_the_fix_is_exact) {
     return v;
   });
   const auto golden = d.path / "golden";
-  write_engine_golden(d.path, golden / "prompts" / "p0_full", {1, 5, 7, 3, 9, 2, 4, 8}, true);
+  ef_test::write_engine_golden(d.path, golden / "prompts" / "p0_full", {1, 5, 7, 3, 9, 2, 4, 8}, true);
   QuantizeOptions o;
   o.overrides.clear();
   quantize_model(d.path, d.path / "uniform.efq", o);

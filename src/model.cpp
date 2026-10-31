@@ -28,13 +28,17 @@ Model Model::load(const std::filesystem::path& model_dir) {
   const CheckReport rep = check_checkpoint(m.cfg_, m.st_.tensors());
   if (!rep.ok()) throw Error("checkpoint does not match config.json: " + rep.errors.front());
 
-  auto bf16 = [&](const std::string& name) {
+  auto view = [&](const std::string& name) {
     const TensorInfo& t = m.st_.at(name);
-    m.bytes_per_token_ += t.nbytes();
-    return m.st_.bf16_data(t);
+    return WeightView{QType::BF16, reinterpret_cast<const std::uint8_t*>(m.st_.bf16_data(t)),
+                      static_cast<std::size_t>(t.shape.at(0)), static_cast<std::size_t>(t.shape.at(1))};
   };
-  m.embed_ = m.st_.bf16_data(m.st_.at("model.embed_tokens.weight"));  // one row per token: not streamed
-  m.lm_head_ = m.cfg_.tie_word_embeddings ? m.embed_ : bf16("lm_head.weight");
+  auto streamed = [&](const std::string& name) {
+    m.bytes_per_token_ += m.st_.at(name).nbytes();
+    return view(name);
+  };
+  m.embed_ = view("model.embed_tokens.weight");  // one row per token: not streamed
+  m.lm_head_ = m.cfg_.tie_word_embeddings ? m.embed_ : streamed("lm_head.weight");
   if (m.cfg_.tie_word_embeddings) m.bytes_per_token_ += m.st_.at("model.embed_tokens.weight").nbytes();
   m.final_norm_ = read_f32_tensor(m.st_, "model.norm.weight");
   m.bytes_per_token_ += m.st_.at("model.norm.weight").nbytes();
@@ -43,18 +47,99 @@ Model Model::load(const std::filesystem::path& model_dir) {
   for (std::size_t l = 0; l < m.layers_.size(); ++l) {
     const std::string p = "model.layers." + std::to_string(l) + ".";
     LayerWeights& w = m.layers_[l];
-    w.wq = bf16(p + "self_attn.q_proj.weight");
-    w.wk = bf16(p + "self_attn.k_proj.weight");
-    w.wv = bf16(p + "self_attn.v_proj.weight");
-    w.wo = bf16(p + "self_attn.o_proj.weight");
-    w.w_gate = bf16(p + "mlp.gate_proj.weight");
-    w.w_up = bf16(p + "mlp.up_proj.weight");
-    w.w_down = bf16(p + "mlp.down_proj.weight");
+    w.wq = streamed(p + "self_attn.q_proj.weight");
+    w.wk = streamed(p + "self_attn.k_proj.weight");
+    w.wv = streamed(p + "self_attn.v_proj.weight");
+    w.wo = streamed(p + "self_attn.o_proj.weight");
+    w.w_gate = streamed(p + "mlp.gate_proj.weight");
+    w.w_up = streamed(p + "mlp.up_proj.weight");
+    w.w_down = streamed(p + "mlp.down_proj.weight");
     w.attn_norm = read_f32_tensor(m.st_, p + "input_layernorm.weight");
     w.ffn_norm = read_f32_tensor(m.st_, p + "post_attention_layernorm.weight");
     m.bytes_per_token_ += m.st_.at(p + "input_layernorm.weight").nbytes();
     m.bytes_per_token_ += m.st_.at(p + "post_attention_layernorm.weight").nbytes();
   }
+  m.description_ = "BF16 safetensors";
+  return m;
+}
+
+Model Model::load_efq(const std::filesystem::path& efq_file) {
+  Model m;
+  m.q_ = QuantFile::open(efq_file);
+  m.cfg_ = m.q_.config();
+  std::size_t n_q4 = 0, n_q8 = 0, n_other = 0;
+  auto view = [&](const std::string& name) {
+    const QTensor& t = m.q_.at(name);
+    if (t.shape.size() != 2) throw Error("'" + name + "' must be a matrix");
+    return WeightView{t.type, m.q_.data(t), static_cast<std::size_t>(t.rows()), static_cast<std::size_t>(t.cols())};
+  };
+  auto matrix = [&](const std::string& name) {
+    const WeightView w = view(name);
+    (w.type == QType::Q4_0 ? n_q4 : w.type == QType::Q8_0 ? n_q8 : n_other)++;
+    return w;
+  };
+  auto vec = [&](const std::string& name) {
+    const QTensor& t = m.q_.at(name);
+    std::vector<float> v(static_cast<std::size_t>(t.cols()));
+    m.q_.dequantize_row(t, 0, v.data());  // norms are F32: an exact copy
+    return v;
+  };
+  m.embed_ = view("model.embed_tokens.weight");
+  m.lm_head_ = m.cfg_.tie_word_embeddings ? m.embed_ : matrix("lm_head.weight");
+  m.final_norm_ = vec("model.norm.weight");
+  m.layers_.resize(static_cast<std::size_t>(m.cfg_.num_hidden_layers));
+  for (std::size_t l = 0; l < m.layers_.size(); ++l) {
+    const std::string p = "model.layers." + std::to_string(l) + ".";
+    LayerWeights& w = m.layers_[l];
+    w.wq = matrix(p + "self_attn.q_proj.weight");
+    w.wk = matrix(p + "self_attn.k_proj.weight");
+    w.wv = matrix(p + "self_attn.v_proj.weight");
+    w.wo = matrix(p + "self_attn.o_proj.weight");
+    w.w_gate = matrix(p + "mlp.gate_proj.weight");
+    w.w_up = matrix(p + "mlp.up_proj.weight");
+    w.w_down = matrix(p + "mlp.down_proj.weight");
+    w.attn_norm = vec(p + "input_layernorm.weight");
+    w.ffn_norm = vec(p + "post_attention_layernorm.weight");
+  }
+  m.bytes_per_token_ = m.q_.bytes_per_token();
+  const std::string& policy = m.q_.policy().name;
+  m.description_ = "efq" + (policy.empty() ? std::string() : ", policy " + policy) + ": " + std::to_string(n_q4) +
+                   " Q4_0 + " + std::to_string(n_q8) + " Q8_0" +
+                   (n_other ? " + " + std::to_string(n_other) + " other" : std::string()) + " matrices, embedding " +
+                   qtype_name(m.embed_.type);
+  return m;
+}
+
+Model Model::dequantized_copy(const Model& src) {
+  Model m;
+  m.cfg_ = src.cfg_;
+  m.final_norm_ = src.final_norm_;
+  auto deq = [&](const WeightView& w) {
+    m.owned_.emplace_back(w.rows * w.cols);  // inner buffers never move, so views stay valid
+    std::vector<float>& buf = m.owned_.back();
+    for (std::size_t r = 0; r < w.rows; ++r) kern::row_f32(buf.data() + r * w.cols, w, r);
+    m.bytes_per_token_ += buf.size() * sizeof(float);
+    return WeightView{QType::F32, reinterpret_cast<const std::uint8_t*>(buf.data()), w.rows, w.cols};
+  };
+  m.embed_ = deq(src.embed_);
+  m.bytes_per_token_ = 0;  // the embedding contributes one row per token
+  m.lm_head_ = src.cfg_.tie_word_embeddings ? m.embed_ : deq(src.lm_head_);
+  if (src.cfg_.tie_word_embeddings) m.bytes_per_token_ += m.embed_.bytes();
+  m.layers_.resize(src.layers_.size());
+  for (std::size_t l = 0; l < src.layers_.size(); ++l) {
+    const LayerWeights& s = src.layers_[l];
+    LayerWeights& w = m.layers_[l];
+    w.wq = deq(s.wq);
+    w.wk = deq(s.wk);
+    w.wv = deq(s.wv);
+    w.wo = deq(s.wo);
+    w.w_gate = deq(s.w_gate);
+    w.w_up = deq(s.w_up);
+    w.w_down = deq(s.w_down);
+    w.attn_norm = s.attn_norm;
+    w.ffn_norm = s.ffn_norm;
+  }
+  m.description_ = "F32 dequantized copy of " + src.description_;
   return m;
 }
 
@@ -108,7 +193,7 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
 
   float* x = x_.data();
   float* h = h_.data();
-  kern::embedding_bf16(x, m_.embed_tokens(), static_cast<std::size_t>(token), D_);
+  kern::row_f32(x, m_.embed_tokens(), static_cast<std::size_t>(token));
   const float* cos_row = rope_.cos_row(pos);
   const float* sin_row = rope_.sin_row(pos);
 
@@ -121,21 +206,21 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
 
     // ---- attention block
     kern::rmsnorm(h, x, w.attn_norm.data(), D_, eps_);
-    kern::matvec_bf16(q_.data(), w.wq, h, D_, D_);
-    kern::matvec_bf16(k_pos, w.wk, h, kvd_, D_);
-    kern::matvec_bf16(v_pos, w.wv, h, kvd_, D_);
+    kern::matvec(q_.data(), w.wq, h);
+    kern::matvec(k_pos, w.wk, h);
+    kern::matvec(v_pos, w.wv, h);
     kern::rope_apply(q_.data(), H_, hd_, cos_row, sin_row);
     kern::rope_apply(k_pos, KV_, hd_, cos_row, sin_row);
     kern::attention(ctx_.data(), q_.data(), k_layer, v_layer, pos + 1, H_, KV_, hd_, scores_.data());
-    kern::matvec_bf16(o_.data(), w.wo, ctx_.data(), D_, D_);
+    kern::matvec(o_.data(), w.wo, ctx_.data());
     kern::add_inplace(x, o_.data(), D_);
 
     // ---- MLP block (SwiGLU)
     kern::rmsnorm(h, x, w.ffn_norm.data(), D_, eps_);
-    kern::matvec_bf16(gate_.data(), w.w_gate, h, F_, D_);
-    kern::matvec_bf16(up_.data(), w.w_up, h, F_, D_);
+    kern::matvec(gate_.data(), w.w_gate, h);
+    kern::matvec(up_.data(), w.w_up, h);
     kern::swiglu(gate_.data(), gate_.data(), up_.data(), F_);
-    kern::matvec_bf16(o_.data(), w.w_down, gate_.data(), D_, F_);
+    kern::matvec(o_.data(), w.w_down, gate_.data());
     kern::add_inplace(x, o_.data(), D_);
 
     if (trace != nullptr && trace->capture) std::memcpy(trace->layer_out.data() + l * D_, x, D_ * sizeof(float));
@@ -145,7 +230,7 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
   kern::rmsnorm(h, x, m_.final_norm().data(), D_, eps_);
   if (trace != nullptr && trace->capture) std::memcpy(trace->final_norm.data(), h, D_ * sizeof(float));
   if (!compute_logits) return nullptr;
-  kern::matvec_bf16(logits_.data(), m_.lm_head(), h, V_, D_);
+  kern::matvec(logits_.data(), m_.lm_head(), h);
   return logits_.data();
 }
 
