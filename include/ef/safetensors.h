@@ -88,6 +88,10 @@ class SafetensorsFile {
   // Raw bit pattern of element `index` (16- or 32-bit dtypes), for exact comparisons.
   std::uint32_t raw_bits(const TensorInfo& t, std::uint64_t index) const;
 
+  // Direct pointer to a BF16 tensor inside the mapping, for zero-copy kernels.
+  // Throws if the dtype is not BF16 or the data is not 2-byte aligned.
+  const std::uint16_t* bf16_data(const TensorInfo& t) const;
+
  private:
   MappedFile file_;
   SafetensorsHeader header_;

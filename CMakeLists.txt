@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.1.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,6 +45,15 @@ else()
   endif()
 endif()
 
+# Reference kernels must be bit-reproducible across compilers: no implicit a*b+c -> FMA
+# contraction (GCC < 13 contracts by default even in ISO mode; Clang contracts within
+# expressions). MSVC's default /fp:precise already does not contract. Explicit FMA comes
+# later, in the SIMD kernels, where it is tested against these.
+set(EF_FP_FLAGS "")
+if(NOT MSVC)
+  set(EF_FP_FLAGS -ffp-contract=off)
+endif()
+
 set(EF_SAN_FLAGS "")
 if(EF_SANITIZE AND NOT MSVC)
   set(EF_SAN_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
@@ -52,10 +61,10 @@ endif()
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" EF_BT_UPPER)
 string(REPLACE ";" " " EF_ARCH_STR "${EF_ARCH_FLAGS}")
-string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${EF_BT_UPPER}} ${EF_ARCH_STR}" EF_FLAGS_STR)
+string(STRIP "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${EF_BT_UPPER}} ${EF_ARCH_STR} -ffp-contract=off" EF_FLAGS_STR)
 
 function(ef_configure target)
-  target_compile_options(${target} PRIVATE ${EF_WARN_FLAGS} ${EF_ARCH_FLAGS} ${EF_SAN_FLAGS})
+  target_compile_options(${target} PRIVATE ${EF_WARN_FLAGS} ${EF_ARCH_FLAGS} ${EF_FP_FLAGS} ${EF_SAN_FLAGS})
   if(EF_SAN_FLAGS)
     target_link_options(${target} PRIVATE ${EF_SAN_FLAGS})
   endif()
@@ -69,6 +78,9 @@ add_library(ef_core STATIC
   src/model_config.cpp
   src/membench.cpp
   src/sysinfo.cpp
+  src/kernels.cpp
+  src/golden.cpp
+  src/verify_math.cpp
 )
 target_include_directories(ef_core PUBLIC include)
 target_link_libraries(ef_core PUBLIC Threads::Threads)
@@ -94,14 +106,28 @@ add_executable(ef_tests
   tests/test_safetensors.cpp
   tests/test_config.cpp
   tests/test_membench.cpp
+  tests/test_kernels.cpp
+  tests/test_golden.cpp
 )
 target_link_libraries(ef_tests PRIVATE ef_core)
 target_include_directories(ef_tests PRIVATE tests)
 ef_configure(ef_tests)
 
-foreach(suite json fp16 safetensors config membench)
+foreach(suite json fp16 safetensors config membench kernels golden)
   add_test(NAME ${suite} COMMAND ef_tests ${suite})
 endforeach()
+
+# Stage 2: kernels vs PyTorch golden outputs (weight-free checks need only tests/golden).
+if(NOT EF_GOLDEN_DIR AND EXISTS "${CMAKE_SOURCE_DIR}/tests/golden/meta.json")
+  set(EF_GOLDEN_DIR "${CMAKE_SOURCE_DIR}/tests/golden")
+endif()
+if(EF_GOLDEN_DIR)
+  if(EF_MODEL_DIR)
+    add_test(NAME golden_math COMMAND edgeforge verify-math --golden "${EF_GOLDEN_DIR}" --model-dir "${EF_MODEL_DIR}")
+  else()
+    add_test(NAME golden_math COMMAND edgeforge verify-math --golden "${EF_GOLDEN_DIR}")
+  endif()
+endif()
 
 if(EF_MODEL_DIR)
   if(EF_GOLDEN_DIR)

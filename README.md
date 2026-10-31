@@ -3,8 +3,44 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 1: foundation** (model loader, config, memory-bandwidth
-> benchmark, golden-reference tooling). No transformer maths yet.
+> Current milestone: **Stage 2: scalar FP32 math kernels**, verified against PyTorch.
+> Stage 1 (loader, config, membench, golden data) is tagged `stage1-verified`.
+
+## Stage 2: math kernels (`include/ef/kernels.h`)
+
+| Kernel | HF behaviour matched |
+|---|---|
+| `matvec_f32` / `matvec_bf16` | y = W·x, W row-major [out][in]. FP32 accumulation with 8 partial sums. BF16 is widened exactly, so it is bit-identical to the FP32 path. |
+| `rmsnorm` | `w * (x * rsqrt(mean(x²) + eps))` |
+| `softmax_inplace` | Max-subtracted; masked `-inf` entries become exactly 0 |
+| `RopeTable` + `rope_apply` | FP32 `inv_freq` and angles as in HF. Half-split pairing (i, i+32). |
+| `silu` / `swiglu` | `silu(gate) * up`. Overflow-safe for very negative inputs. |
+| `attention` | Causal, GQA (head h → KV head h/8), scale 1/√64, one query against a KV cache |
+| `embedding_bf16`, `add_inplace`, `argmax` | Exact lookup, residual add, first-max argmax |
+
+Two levels of checks:
+
+- **Unit tests:** `ef_tests kernels` covers known values and float64 references. Error is checked against a
+  rigorous FP32 bound. The tests also cover masking, overflow and odd sizes, plus RoPE properties:
+  identity at pos 0, norm preservation, scores that depend only on relative position.
+- **`edgeforge verify-math`:** compares each kernel with the PyTorch golden tensors from Stage 1.
+
+```bash
+# weight-free: RoPE, softmax+GQA attention, SwiGLU, residual (needs only tests/golden)
+~/ef-build/edgeforge verify-math --golden tests/golden
+# full: + embedding, RMSNorm x3, all 7 layer-0 GEMVs, a CHAINED layer 0 from token ids, final norm, lm_head
+~/ef-build/edgeforge verify-math --golden tests/golden --model-dir ~/edgeforge-data/tinyllama --bench bench/membench.json
+```
+
+Tolerances against the FP32 reference:
+- elementwise ops: max error ≤ 1e-5 of the tensor's max |x|;
+- GEMV and attention: ≤ 1e-4, with cosine ≥ 0.99999;
+- embedding: exact;
+- lm_head: the top-1 and top-5 tokens must be identical.
+
+CTest runs `golden_math` automatically when `tests/golden` exists. Configure with
+`-DEF_MODEL_DIR=...` to include the weight checks. Without the real model, `tools/make_synthetic_golden.py`
+builds float64 numpy golden data for a synthetic checkpoint, which exercises the weight path.
 
 ## Stage 1 status
 
@@ -25,10 +61,12 @@ BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in th
 ```
 include/ef/        public headers (json, fp16, mapped_file, safetensors, model_config, membench, sysinfo)
 src/               implementation + main.cpp (CLI)
-tests/             self-contained test framework + suites (json, fp16, safetensors, config, membench)
+tests/             self-contained test framework + suites (json, fp16, safetensors, config, membench,
+                   kernels, golden); tests/golden = PyTorch reference data from Stage 1
 tools/
   dump_reference.py            dev-only: PyTorch/transformers golden data (never linked into the engine)
   make_synthetic_checkpoint.py fake TinyLlama-shaped checkpoint for offline pipeline tests
+  make_synthetic_golden.py     float64 numpy layer-0 golden data for a synthetic checkpoint
   build.sh                     build + test without CMake
 docs/              architecture.md, golden_format.md
 ```
@@ -156,7 +194,9 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 2
+## Next: Stage 3
 
-Scalar FP32 kernels (GEMV, RMSNorm, softmax, RoPE, SwiGLU) with unit tests, then the FP32 forward pass
-verified layer by layer against `tests/golden/prompts/p0_factual/`.
+FP32 forward pass over all 22 layers with a KV cache, built from these kernels. Checks against golden:
+- `hidden_all`, every layer at every position;
+- `logits_all`;
+- `decode_logits`, which confirms that decoding with the cache matches recomputing from scratch.

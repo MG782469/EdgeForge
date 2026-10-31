@@ -10,12 +10,12 @@ CXX="${CXX:-g++}"
 ARCH="${EF_ARCH:--march=native}"
 mkdir -p "$OUT/obj"
 
-FLAGS=(-std=c++20 -O3 -DNDEBUG "$ARCH" -Wall -Wextra -Wpedantic -Wshadow -pthread -I"$ROOT/include")
-DEFS=("-DEF_BUILD_TYPE=\"Release\"" "-DEF_BUILD_FLAGS=\"-O3 -DNDEBUG $ARCH (tools/build.sh)\"")
+FLAGS=(-std=c++20 -O3 -DNDEBUG "$ARCH" -ffp-contract=off -Wall -Wextra -Wpedantic -Wshadow -pthread -I"$ROOT/include")
+DEFS=("-DEF_BUILD_TYPE=\"Release\"" "-DEF_BUILD_FLAGS=\"-O3 -DNDEBUG $ARCH -ffp-contract=off (tools/build.sh)\"")
 
 echo "compiler: $("$CXX" --version | head -1)"
 objs=()
-for s in json mapped_file safetensors model_config membench sysinfo; do
+for s in json mapped_file safetensors model_config membench sysinfo kernels golden verify_math; do
   echo "  CXX src/$s.cpp"
   "$CXX" "${FLAGS[@]}" "${DEFS[@]}" -c "$ROOT/src/$s.cpp" -o "$OUT/obj/$s.o"
   objs+=("$OUT/obj/$s.o")

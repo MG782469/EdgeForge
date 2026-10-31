@@ -22,13 +22,14 @@
 #include "ef/model_config.h"
 #include "ef/safetensors.h"
 #include "ef/sysinfo.h"
+#include "ef/verify_math.h"
 
 namespace fs = std::filesystem;
 using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.1.0 (stage 1)";
+constexpr const char* kVersion = "0.2.0 (stage 2)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -41,18 +42,22 @@ constexpr KnownModel kTinyLlama = {"TinyLlama-1.1B", 2048, 5632, 22, 32, 4, 3200
 
 void print_usage() {
   std::printf(
-      "EdgeForge %s - CPU inference engine for TinyLlama (Stage 1 tools)\n\n"
+      "EdgeForge %s - CPU inference engine for TinyLlama\n\n"
       "Usage:\n"
       "  edgeforge inspect  --model-dir DIR [--list] [--tensor NAME] [--count N]\n"
       "  edgeforge verify   --model-dir DIR [--golden DIR] [--quick]\n"
       "  edgeforge membench [--mb 1024] [--threads 1,2,4,8 | --sweep] [--runs 5] [--passes 3]\n"
       "                     [--warmup 1] [--force] [--json FILE]\n"
+      "  edgeforge verify-math --golden DIR [--model-dir DIR] [--prompt p0_factual] [--bench FILE]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
       "          scans every weight for NaN/Inf (skip with --quick); with --golden, compares\n"
       "          weight_probe.json from tools/dump_reference.py bit-for-bit. Exit code 0 = PASS.\n"
-      "membench  Multithreaded memory read bandwidth (default: 1 GiB, thread sweep).\n",
+      "membench  Multithreaded memory read bandwidth (default: 1 GiB, thread sweep).\n"
+      "verify-math  Stage 2: every math kernel (RoPE, softmax/attention, SwiGLU, residual; with\n"
+      "          --model-dir also embedding, RMSNorm, all layer-0 GEMVs, a chained layer 0, final\n"
+      "          norm and lm_head) against PyTorch golden outputs. Exit code 0 = PASS.\n",
       kVersion);
 }
 
@@ -84,9 +89,11 @@ Args parse_args(int argc, char** argv) {
       {"verify", {"model-dir", "golden"}},
       {"membench", {"mb", "threads", "runs", "passes", "warmup", "json"}},
       {"sysinfo", {}},
+      {"verify-math", {"golden", "model-dir", "prompt", "bench"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
+      {"verify-math", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -620,6 +627,15 @@ int main(int argc, char** argv) {
     if (a.command == "verify") return cmd_verify(a);
     if (a.command == "membench") return cmd_membench(a);
     if (a.command == "sysinfo") return cmd_sysinfo();
+    if (a.command == "verify-math") {
+      if (!a.has("golden")) throw Error("--golden DIR is required (folder written by tools/dump_reference.py)");
+      VerifyMathOptions o;
+      o.golden_dir = a.get("golden");
+      o.model_dir = a.get("model-dir");
+      o.bench_json = a.get("bench");
+      o.prompt = a.get("prompt", "p0_factual");
+      return run_verify_math(o);
+    }
     print_usage();
     return 2;
   } catch (const Error& e) {

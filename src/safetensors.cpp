@@ -341,4 +341,15 @@ std::uint32_t SafetensorsFile::raw_bits(const TensorInfo& t, std::uint64_t index
   throw Error("tensor '" + t.name + "': raw_bits supports 16/32-bit dtypes only");
 }
 
+const std::uint16_t* SafetensorsFile::bf16_data(const TensorInfo& t) const {
+  if (t.dtype != DType::BF16) {
+    throw Error("tensor '" + t.name + "': expected BF16, got " + dtype_name(t.dtype));
+  }
+  const std::uint8_t* p = bytes(t).data();
+  if (reinterpret_cast<std::uintptr_t>(p) % alignof(std::uint16_t) != 0) {
+    throw Error("tensor '" + t.name + "': BF16 data is not 2-byte aligned in the file");
+  }
+  return reinterpret_cast<const std::uint16_t*>(p);
+}
+
 }  // namespace ef
