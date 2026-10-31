@@ -3,8 +3,46 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 2: scalar FP32 math kernels**, verified against PyTorch.
-> Stage 1 (loader, config, membench, golden data) is tagged `stage1-verified`.
+> Current milestone: **Stage 3: the complete FP32 forward pass with a KV cache**, verified against PyTorch.
+> Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels).
+
+## Stage 3: forward pass (`include/ef/model.h`)
+
+- **`Model`**:
+  - a zero-copy view of the memory-mapped BF16 weights;
+  - every tensor is validated against config.json;
+  - computes the bytes streamed per token (1.93 GiB for TinyLlama).
+- **`Transformer::forward(token, pos)`**:
+  - one token through all 22 layers, made only from the Stage 2 kernels;
+  - KV cache layout `[layer][pos][256]`;
+  - writing at `pos < cached()` rewinds the cache;
+  - lm_head is skipped for prefill positions whose logits are not needed.
+- **`generate_greedy`**: prefill, then argmax decoding until EOS or `max_new`.
+
+```bash
+M=~/edgeforge-data/tinyllama
+# all prompts: hidden state of every layer, logits at every position, decode logits through the
+# KV cache, greedy tokens (scalar 1 thread: about a minute)
+~/ef-build/edgeforge verify-forward --golden tests/golden --model-dir $M
+# first FP32 baseline speed (no tokenizer yet: prompt given as ids)
+~/ef-build/edgeforge generate --model-dir $M --ids-from tests/golden/prompts/p0_factual --max-new 16 --bench bench/membench.json
+```
+
+Tolerances against the FP32 PyTorch reference:
+- **hidden states:** rel ≤ 1e-3 and cosine ≥ 0.9999;
+- **logits:** rel ≤ 1e-3 and cosine ≥ 0.99999;
+- **argmax:** identical at every position;
+- **greedy tokens:** identical. A flip is tolerated only where HF's own top-1/top-2 margin is below 1e-3.
+
+How the forward pass was tested:
+- `ef_tests model` compares against a double-precision reference written separately in the test. That
+  reference recomputes the whole sequence **without** a KV cache, so it independently checks positions,
+  caching, GQA and tied embeddings.
+- An injected KV-offset bug makes four of those tests fail.
+
+Measured on a synthetic 2.2 GB checkpoint: 2.6 tok/s scalar, about 5.3 GB/s of weights.
+
+
 
 ## Stage 2: math kernels (`include/ef/kernels.h`)
 
@@ -194,9 +232,8 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 3
+## Next: Stage 4
 
-FP32 forward pass over all 22 layers with a KV cache, built from these kernels. Checks against golden:
-- `hidden_all`, every layer at every position;
-- `logits_all`;
-- `decode_logits`, which confirms that decoding with the cache matches recomputing from scratch.
+- C++ tokenizer (`tokenizer.json`, SentencePiece-style BPE + byte fallback), verified against
+  `tokenizer_cases.json` (122 strings) and `chat_template_cases.json`.
+- TinyLlama chat template, sampler and a terminal chat.

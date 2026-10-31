@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.2.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -81,6 +81,8 @@ add_library(ef_core STATIC
   src/kernels.cpp
   src/golden.cpp
   src/verify_math.cpp
+  src/model.cpp
+  src/verify_forward.cpp
 )
 target_include_directories(ef_core PUBLIC include)
 target_link_libraries(ef_core PUBLIC Threads::Threads)
@@ -108,12 +110,13 @@ add_executable(ef_tests
   tests/test_membench.cpp
   tests/test_kernels.cpp
   tests/test_golden.cpp
+  tests/test_model.cpp
 )
 target_link_libraries(ef_tests PRIVATE ef_core)
 target_include_directories(ef_tests PRIVATE tests)
 ef_configure(ef_tests)
 
-foreach(suite json fp16 safetensors config membench kernels golden)
+foreach(suite json fp16 safetensors config membench kernels golden model)
   add_test(NAME ${suite} COMMAND ef_tests ${suite})
 endforeach()
 
@@ -124,6 +127,9 @@ endif()
 if(EF_GOLDEN_DIR)
   if(EF_MODEL_DIR)
     add_test(NAME golden_math COMMAND edgeforge verify-math --golden "${EF_GOLDEN_DIR}" --model-dir "${EF_MODEL_DIR}")
+    # Stage 3: whole model, every golden prompt (scalar, 1 thread: about a minute).
+    add_test(NAME golden_forward COMMAND edgeforge verify-forward --golden "${EF_GOLDEN_DIR}" --model-dir "${EF_MODEL_DIR}")
+    set_tests_properties(golden_forward PROPERTIES TIMEOUT 1800)
   else()
     add_test(NAME golden_math COMMAND edgeforge verify-math --golden "${EF_GOLDEN_DIR}")
   endif()

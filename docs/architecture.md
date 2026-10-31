@@ -13,8 +13,8 @@ B. per prompt:  text -> tokenizer -> [embed -> 22 x (RMSNorm, QKV, RoPE, GQA att
 | # | Stage | Done when |
 |---|---|---|
 | 1 ✅ | Foundation: loader, config, membench, golden tooling | real checkpoint `verify` PASS, laptop membench, golden + self-check PASS |
-| 2 | Scalar FP32 kernels | `edgeforge verify-math` PASS incl. chained layer 0 + lm_head |
-| 3 | FP32 forward pass + KV cache | `hidden_all`, `logits_all`, `decode_logits` within tolerance |
+| 2 ✅ | Scalar FP32 kernels | `edgeforge verify-math` PASS incl. chained layer 0 + lm_head |
+| 3 | FP32 forward pass + KV cache | `edgeforge verify-forward` PASS on all golden prompts |
 | 4 | Tokenizer, chat template, sampler | `tokenizer_cases.json` 100% match; greedy text matches |
 | 5 | Quantizer + file format | reconstruction error, file size, perplexity delta |
 | 6 | Q4 inference | top-1 agreement / KL vs FP32 engine |

@@ -23,13 +23,16 @@
 #include "ef/safetensors.h"
 #include "ef/sysinfo.h"
 #include "ef/verify_math.h"
+#include "ef/golden.h"
+#include "ef/model.h"
+#include "ef/verify_forward.h"
 
 namespace fs = std::filesystem;
 using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.2.0 (stage 2)";
+constexpr const char* kVersion = "0.3.0 (stage 3)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -49,6 +52,9 @@ void print_usage() {
       "  edgeforge membench [--mb 1024] [--threads 1,2,4,8 | --sweep] [--runs 5] [--passes 3]\n"
       "                     [--warmup 1] [--force] [--json FILE]\n"
       "  edgeforge verify-math --golden DIR [--model-dir DIR] [--prompt p0_factual] [--bench FILE]\n"
+      "  edgeforge verify-forward --golden DIR --model-dir DIR [--prompt NAME]\n"
+      "  edgeforge generate --model-dir DIR (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR) [--max-new 32]\n"
+      "                     [--eos ID] [--bench FILE]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -57,7 +63,10 @@ void print_usage() {
       "membench  Multithreaded memory read bandwidth (default: 1 GiB, thread sweep).\n"
       "verify-math  Stage 2: every math kernel (RoPE, softmax/attention, SwiGLU, residual; with\n"
       "          --model-dir also embedding, RMSNorm, all layer-0 GEMVs, a chained layer 0, final\n"
-      "          norm and lm_head) against PyTorch golden outputs. Exit code 0 = PASS.\n",
+      "          norm and lm_head) against PyTorch golden outputs. Exit code 0 = PASS.\n"
+      "verify-forward  Stage 3: all layers + KV-cache decoding vs golden (hidden states per layer,\n"
+      "          logits at every position, decode logits, greedy tokens). Exit code 0 = PASS.\n"
+      "generate  Greedy decoding from token ids (no tokenizer yet) with tok/s and GB/s.\n",
       kVersion);
 }
 
@@ -90,10 +99,12 @@ Args parse_args(int argc, char** argv) {
       {"membench", {"mb", "threads", "runs", "passes", "warmup", "json"}},
       {"sysinfo", {}},
       {"verify-math", {"golden", "model-dir", "prompt", "bench"}},
+      {"verify-forward", {"golden", "model-dir", "prompt"}},
+      {"generate", {"model-dir", "ids", "ids-from", "max-new", "eos", "bench"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
-      {"verify-math", {}},
+      {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -516,6 +527,22 @@ void print_system(const SystemInfo& s) {
   std::printf("Build    : %s | %s | flags: %s\n", s.compiler.c_str(), s.build_type.c_str(), s.build_flags.c_str());
 }
 
+std::vector<std::int32_t> parse_id_list(const std::string& s) {
+  std::vector<std::int32_t> out;
+  std::size_t pos = 0;
+  while (pos <= s.size()) {
+    const std::size_t comma = s.find(',', pos);
+    const std::string item = s.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+    char* end = nullptr;
+    const long v = std::strtol(item.c_str(), &end, 10);
+    if (item.empty() || *end != '\0' || v < 0) throw Error("--ids expects e.g. 1,529,29989; got '" + s + "'");
+    out.push_back(static_cast<std::int32_t>(v));
+    if (comma == std::string::npos) break;
+    pos = comma + 1;
+  }
+  return out;
+}
+
 std::vector<int> parse_thread_list(const std::string& s) {
   std::vector<int> out;
   std::size_t pos = 0;
@@ -604,6 +631,54 @@ int cmd_membench(const Args& a) {
   return all_ok ? 0 : 1;
 }
 
+int cmd_generate(const Args& a) {
+  if (!a.has("model-dir")) throw Error("--model-dir DIR is required");
+  std::vector<std::int32_t> ids;
+  if (a.has("ids-from")) {
+    ids = GoldenPrompt::open(a.get("ids-from")).input_ids();
+  } else if (a.has("ids")) {
+    for (const auto& item : parse_id_list(a.get("ids"))) ids.push_back(item);
+  } else {
+    throw Error("give the prompt as --ids 1,529,... or --ids-from tests/golden/prompts/<name>");
+  }
+  const auto t_load = std::chrono::steady_clock::now();
+  const Model m = Model::load(a.get("model-dir"));
+  const double load_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t_load).count();
+  const auto max_new = static_cast<std::size_t>(std::max(1LL, a.get_int("max-new", 32)));
+  const auto eos = static_cast<std::int32_t>(a.get_int("eos", m.config().eos_token_id));
+  Transformer tr(m, ids.size() + max_new);
+  std::printf("EdgeForge %s - generate (scalar FP32 reference engine, 1 thread)\n", kVersion);
+  std::printf("model loaded (mmap) in %.2f s | KV cache %s | %s of weights per token\n", load_s,
+              human_bytes(tr.kv_cache_bytes()).c_str(), human_bytes(m.weight_bytes_per_token()).c_str());
+  std::string p;
+  for (auto id : ids) p += (p.empty() ? "" : " ") + std::to_string(id);
+  std::printf("prompt ids (%zu): %s\n", ids.size(), p.c_str());
+  const GreedyResult r = generate_greedy(tr, ids, max_new, eos);
+  std::string g;
+  for (auto id : r.tokens) g += (g.empty() ? "" : " ") + std::to_string(id);
+  std::printf("generated (%zu)%s: %s\n", r.tokens.size(),
+              (!r.tokens.empty() && r.tokens.back() == eos) ? ", ended on EOS" : "", g.c_str());
+  std::printf("prefill: %zu tok in %.2f s (%.2f tok/s)\n", ids.size(), r.prefill_seconds,
+              static_cast<double>(ids.size()) / r.prefill_seconds);
+  if (r.decode_forwards > 0) {
+    const double tps = static_cast<double>(r.decode_forwards) / r.decode_seconds;
+    const double gbps = tps * static_cast<double>(m.weight_bytes_per_token()) / 1e9;
+    std::printf("decode : %zu tok in %.2f s (%.2f tok/s) -> %.2f GB/s of weights streamed", r.decode_forwards,
+                r.decode_seconds, tps, gbps);
+    if (a.has("bench")) {
+      std::ifstream in(a.get("bench"), std::ios::binary);
+      const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+      if (!text.empty()) {
+        const double peak = json::parse(text).at("peak_median_gbps").as_double();
+        std::printf(" = %.0f%% of membench peak %.2f GB/s", 100.0 * gbps / peak, peak);
+      }
+    }
+    std::printf("\n");
+  }
+  std::printf("peak RSS %s (weights are memory-mapped)\n", human_bytes(peak_rss_bytes()).c_str());
+  return 0;
+}
+
 int cmd_sysinfo() {
   std::printf("EdgeForge %s - system\n", kVersion);
   print_system(query_system_info());
@@ -627,6 +702,15 @@ int main(int argc, char** argv) {
     if (a.command == "verify") return cmd_verify(a);
     if (a.command == "membench") return cmd_membench(a);
     if (a.command == "sysinfo") return cmd_sysinfo();
+    if (a.command == "verify-forward") {
+      if (!a.has("golden") || !a.has("model-dir")) throw Error("verify-forward needs --golden DIR and --model-dir DIR");
+      VerifyForwardOptions o;
+      o.golden_dir = a.get("golden");
+      o.model_dir = a.get("model-dir");
+      o.prompt = a.get("prompt");
+      return run_verify_forward(o);
+    }
+    if (a.command == "generate") return cmd_generate(a);
     if (a.command == "verify-math") {
       if (!a.has("golden")) throw Error("--golden DIR is required (folder written by tools/dump_reference.py)");
       VerifyMathOptions o;
