@@ -549,8 +549,8 @@ int run_verify_quant(const VerifyQuantOptions& o) {
   }
   std::printf("\n  size on disk : %s -> %s  (%.2fx smaller)\n", human_bytes(src_bytes).c_str(),
               human_bytes(q.file_size()).c_str(), static_cast<double>(src_bytes) / static_cast<double>(q.file_size()));
-  std::printf("  read / token : %s -> %s  (%.2fx less weight traffic per decoded token; an upper bound on the\n"
-              "                 decode speed-up, reached only if Stage 6/7 kernels run at the memory limit)\n",
+  std::printf("  read / token : %s -> %s  (%.2fx less weight traffic per decoded token; decode speed follows\n"
+              "                 it when decoding is limited by memory traffic - measured in Stages 6/7)\n",
               human_bytes(src_per_tok).c_str(), human_bytes(q.bytes_per_token()).c_str(),
               static_cast<double>(src_per_tok) / static_cast<double>(q.bytes_per_token()));
 

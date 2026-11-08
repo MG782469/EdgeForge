@@ -3,9 +3,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <queue>
 
 #include "ef/error.h"
 #include "ef/json.h"
@@ -271,23 +273,53 @@ void Tokenizer::bpe(std::string_view word, std::vector<std::int32_t>& out) const
     i += n;
   }
   // Merge the lowest-rank adjacent pair (leftmost on ties) until none applies.
-  while (sym.size() > 1) {
-    std::int32_t best_rank = std::numeric_limits<std::int32_t>::max();
-    std::size_t best_pos = 0;
-    std::int32_t best_id = -1;
-    for (std::size_t i = 0; i + 1 < sym.size(); ++i) {
-      const std::uint64_t key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(sym[i])) << 32) |
-                                static_cast<std::uint32_t>(sym[i + 1]);
-      const auto it = merges_.find(key);
-      if (it != merges_.end() && it->second.rank < best_rank) {
-        best_rank = it->second.rank;
-        best_pos = i;
-        best_id = it->second.id;
-      }
+  // Llama's tokenizer has no pre-tokenizer, so a whole text segment can be one "word": the
+  // pairs live in a min-heap keyed by (rank, position) over a linked list of symbols, which makes
+  // this O(n log n) instead of rescanning every pair after every merge (O(n^2): hours for a 1 MB
+  // text). Stale heap entries are recognised by their symbol ids and skipped; positions only
+  // grow along the list, so "smallest position" is exactly "leftmost", as in the plain loop.
+  const std::size_t n = sym.size();
+  if (n > 1) {
+    std::vector<std::int64_t> prev(n), next(n);
+    for (std::size_t i = 0; i < n; ++i) {
+      prev[i] = static_cast<std::int64_t>(i) - 1;
+      next[i] = i + 1 < n ? static_cast<std::int64_t>(i) + 1 : -1;
     }
-    if (best_id < 0) break;
-    sym[best_pos] = best_id;
-    sym.erase(sym.begin() + static_cast<std::ptrdiff_t>(best_pos) + 1);
+    struct Cand {
+      std::int32_t rank;
+      std::size_t pos;
+      std::int32_t left, right;
+      bool operator>(const Cand& o) const noexcept { return rank != o.rank ? rank > o.rank : pos > o.pos; }
+    };
+    std::priority_queue<Cand, std::vector<Cand>, std::greater<Cand>> heap;
+    auto push = [&](std::size_t pos) {
+      if (next[pos] < 0) return;
+      const std::int32_t l = sym[pos], r = sym[static_cast<std::size_t>(next[pos])];
+      const std::uint64_t key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(l)) << 32) |
+                                static_cast<std::uint32_t>(r);
+      const auto it = merges_.find(key);
+      if (it != merges_.end()) heap.push(Cand{it->second.rank, pos, l, r});
+    };
+    for (std::size_t i = 0; i + 1 < n; ++i) push(i);
+    std::vector<char> alive(n, 1);
+    while (!heap.empty()) {
+      const Cand c = heap.top();
+      heap.pop();
+      if (!alive[c.pos] || next[c.pos] < 0) continue;
+      const auto r = static_cast<std::size_t>(next[c.pos]);
+      if (sym[c.pos] != c.left || sym[r] != c.right) continue;  // stale: a neighbour has merged since
+      const std::uint64_t key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(c.left)) << 32) |
+                                static_cast<std::uint32_t>(c.right);
+      sym[c.pos] = merges_.at(key).id;
+      alive[r] = 0;
+      next[c.pos] = next[r];
+      if (next[r] >= 0) prev[static_cast<std::size_t>(next[r])] = static_cast<std::int64_t>(c.pos);
+      if (prev[c.pos] >= 0) push(static_cast<std::size_t>(prev[c.pos]));
+      push(c.pos);
+    }
+    std::size_t k = 0;
+    for (std::int64_t i = 0; i >= 0; i = next[static_cast<std::size_t>(i)]) sym[k++] = sym[static_cast<std::size_t>(i)];
+    sym.resize(k);
   }
   out.insert(out.end(), sym.begin(), sym.end());
 }

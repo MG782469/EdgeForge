@@ -7,7 +7,7 @@ A. once:        model.safetensors (BF16) -> loader -> quantizer (policy tinyllam
                 layers, 6 measured-sensitive matrices + lm_head in Q8_0, BF16 embed, F32 norms) -> model.efq
                 (tools/quantize_tinyllama.sh reproduces and verifies it)
 B. per prompt:  text -> tokenizer -> [embed -> 22 x (RMSNorm, QKV, RoPE, GQA attn + KV cache, o_proj,
-                RMSNorm, SwiGLU MLP) -> final norm -> lm_head] -> sampler -> text  (+ tok/s, GB/s, % of peak)
+                RMSNorm, SwiGLU MLP) -> final norm -> lm_head] -> sampler -> text  (+ tok/s, GB/s, % of the membench baseline)
 ```
 
 ## Stage plan
@@ -20,8 +20,8 @@ B. per prompt:  text -> tokenizer -> [embed -> 22 x (RMSNorm, QKV, RoPE, GQA att
 | 4 ✅ | Tokenizer, chat template, sampler | `verify-tokenizer` 122/122 + chat template + end-to-end text vs PyTorch |
 | 5 ✅ | Quantizer + `.efq` file format | `verify-quant` 12/12 on the real weights: reconstruction, determinism, GEMV cosine of all 154 layer matrices on real activations |
 | 6 ✅ | Q4 inference straight from the packed `.efq` | `eval-quant`: kernels = dequantized math; mean KL ≤ 0.10, confident top-1 ≥ 95%, PPL ratio ≤ 1.15 vs FP32/BF16 |
-| 7 | Threads + SIMD (AVX2) | `bench-decode`: speed-up ladder, logits bit-identical for any thread count; `eval-quant` targets still met |
-| 8 | Profiler, benchmarks, demo | reproducible report |
+| 7 ✅ | Threads + SIMD (AVX2) | `bench-decode`: speed-up ladder, logits bit-identical for any thread count; `eval-quant` targets still met |
+| 8 | Profiler, larger evaluation, llama.cpp comparison, demo | `profile` per-op breakdown; `eval-quant --window 512 --chunks 8` (llama-perplexity scheme) still meets the Stage 6 targets; `compare_llamacpp.sh` summary on identical token ids; `report.sh` and `demo.sh` run clean on the laptop; `verify-chat`: prompt and greedy reply ids = Hugging Face, no role marker in a reply, no natural EOS reply cut; `eos-study`: `--eos-min-p` default decided by the predeclared rule (or kept opt-in) |
 
 ## Stage 1 design decisions
 

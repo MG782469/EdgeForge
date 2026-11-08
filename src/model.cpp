@@ -143,6 +143,13 @@ Model Model::dequantized_copy(const Model& src) {
   return m;
 }
 
+const char* ForwardProfile::name(int op) noexcept {
+  static const char* const names[kOps] = {"embedding", "attn RMSNorm", "q/k/v matmul", "RoPE", "attention",
+                                          "o_proj matmul", "residual adds", "ffn RMSNorm", "gate/up matmul",
+                                          "SwiGLU", "down matmul", "final RMSNorm", "lm_head matmul"};
+  return op >= 0 && op < kOps ? names[op] : "?";
+}
+
 Transformer::Transformer(const Model& model, std::size_t max_seq, ThreadPool* pool) : m_(model), pool_(pool) {
   const ModelConfig& c = model.config();
   D_ = static_cast<std::size_t>(c.hidden_size);
@@ -191,9 +198,21 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
     trace->final_norm.resize(D_);
   }
 
+  // Optional per-op timing (Stage 8): lap(op) charges the time since the previous lap to `op`.
+  using Clock = std::chrono::steady_clock;
+  Clock::time_point t_last = prof_ != nullptr ? Clock::now() : Clock::time_point{};
+  auto lap = [&](ForwardProfile::Op op) {
+    if (prof_ == nullptr) return;
+    const auto now = Clock::now();
+    prof_->seconds[op] += std::chrono::duration<double>(now - t_last).count();
+    t_last = now;
+  };
+  if (prof_ != nullptr) ++prof_->forwards;
+
   float* x = x_.data();
   float* h = h_.data();
   kern::row_f32(x, m_.embed_tokens(), static_cast<std::size_t>(token));
+  lap(ForwardProfile::Embed);
   const float* cos_row = rope_.cos_row(pos);
   const float* sin_row = rope_.sin_row(pos);
 
@@ -206,10 +225,13 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
 
     // ---- attention block
     kern::rmsnorm(h, x, w.attn_norm.data(), D_, eps_);
+    lap(ForwardProfile::AttnNorm);
     const kern::MatvecJob qkv[3] = {{q_.data(), &w.wq, h}, {k_pos, &w.wk, h}, {v_pos, &w.wv, h}};
     kern::matvec_jobs(qkv, 3, pool_);  // one parallel region for q, k and v
+    lap(ForwardProfile::QKV);
     kern::rope_apply(q_.data(), H_, hd_, cos_row, sin_row);
     kern::rope_apply(k_pos, KV_, hd_, cos_row, sin_row);
+    lap(ForwardProfile::Rope);
     if (pool_ != nullptr && pool_->size() > 1) {
       pool_->parallel_for(
           H_,
@@ -221,25 +243,35 @@ const float* Transformer::forward(std::int32_t token, std::size_t pos, bool comp
     } else {
       kern::attention(ctx_.data(), q_.data(), k_layer, v_layer, pos + 1, H_, KV_, hd_, scores_.data());
     }
+    lap(ForwardProfile::Attention);
     kern::matvec(o_.data(), w.wo, ctx_.data(), pool_);
+    lap(ForwardProfile::OProj);
     kern::add_inplace(x, o_.data(), D_);
+    lap(ForwardProfile::Residual);
 
     // ---- MLP block (SwiGLU)
     kern::rmsnorm(h, x, w.ffn_norm.data(), D_, eps_);
+    lap(ForwardProfile::FfnNorm);
     const kern::MatvecJob gate_up[2] = {{gate_.data(), &w.w_gate, h}, {up_.data(), &w.w_up, h}};
     kern::matvec_jobs(gate_up, 2, pool_);
+    lap(ForwardProfile::GateUp);
     kern::swiglu(gate_.data(), gate_.data(), up_.data(), F_);
+    lap(ForwardProfile::SwiGLU);
     kern::matvec(o_.data(), w.w_down, gate_.data(), pool_);
+    lap(ForwardProfile::Down);
     kern::add_inplace(x, o_.data(), D_);
+    lap(ForwardProfile::Residual);
 
     if (trace != nullptr && trace->capture) std::memcpy(trace->layer_out.data() + l * D_, x, D_ * sizeof(float));
   }
   cached_ = pos + 1;  // positions > pos (if any) are now stale and logically dropped
 
   kern::rmsnorm(h, x, m_.final_norm().data(), D_, eps_);
+  lap(ForwardProfile::FinalNorm);
   if (trace != nullptr && trace->capture) std::memcpy(trace->final_norm.data(), h, D_ * sizeof(float));
   if (!compute_logits) return nullptr;
   kern::matvec(logits_.data(), m_.lm_head(), h, pool_);
+  lap(ForwardProfile::LmHead);
   return logits_.data();
 }
 

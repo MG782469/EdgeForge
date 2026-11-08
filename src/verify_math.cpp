@@ -324,7 +324,7 @@ int run_verify_math(const VerifyMathOptions& opt) {
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         if (!text.empty()) {
           const double peak = json::parse(text).at("peak_median_gbps").as_double();
-          std::printf(" = %.0f%% of membench peak %.2f GB/s", 100.0 * gbps / peak, peak);
+          std::printf(" = %.0f%% of the membench baseline %.2f GB/s", 100.0 * gbps / peak, peak);
         }
       }
       std::printf("\n");

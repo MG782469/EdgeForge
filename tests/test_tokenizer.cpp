@@ -1,8 +1,11 @@
 // EdgeForge - Stage 4 tokenizer + sampler unit tests on a synthetic tokenizer.json.
 // (The real TinyLlama tokenizer is checked against Hugging Face by `edgeforge verify-tokenizer`.)
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -185,4 +188,52 @@ TEST(sampler_seeded_distribution) {
   CHECK(std::fabs(count[0] / 20000.0 - 0.7) < 0.02);
   CHECK(std::fabs(count[1] / 20000.0 - 0.2) < 0.02);
   CHECK(std::fabs(count[2] / 20000.0 - 0.1) < 0.02);
+}
+
+// Stage 8: BPE merges use a heap (O(n log n)). Checked against the plain O(n^2) rule - repeatedly
+// merge the lowest-rank adjacent pair, leftmost on ties - on random texts, and timed on a long one
+// (Llama has no pre-tokenizer, so a whole text is one "word"; wikitext-2 is 1.3 MB).
+TEST(tokenizer_bpe_heap_matches_naive_rule_and_scales) {
+  const Tokenizer t = mini();
+  // The mini tokenizer's pieces and merges (test_util.h), as ids: S=264 a=265 b=266 c=267.
+  const std::map<std::pair<std::int32_t, std::int32_t>, std::pair<int, std::int32_t>> merges = {
+      {{266, 267}, {0, 263}}, {{264, 265}, {1, 260}}, {{265, 266}, {2, 261}}, {{260, 266}, {3, 262}},
+      {{264, 264}, {4, 259}}, {{259, 264}, {5, 268}}, {{265, 265}, {6, 271}}};
+  auto naive = [&](const std::string& text) {
+    Ids sym = {264};  // Prepend: the text does not start with a space in these cases
+    for (char ch : text) sym.push_back(ch == ' ' ? 264 : 265 + (ch - 'a'));
+    for (;;) {
+      int best = 1 << 30;
+      std::size_t pos = 0;
+      for (std::size_t i = 0; i + 1 < sym.size(); ++i) {
+        const auto it = merges.find({sym[i], sym[i + 1]});
+        if (it != merges.end() && it->second.first < best) {
+          best = it->second.first;
+          pos = i;
+        }
+      }
+      if (best == 1 << 30) break;
+      sym[pos] = merges.at({sym[pos], sym[pos + 1]}).second;
+      sym.erase(sym.begin() + static_cast<std::ptrdiff_t>(pos) + 1);
+    }
+    return sym;
+  };
+  std::mt19937 rng(5);
+  const char alphabet[] = {'a', 'a', 'b', 'c', ' ', ' '};
+  int mismatches = 0;
+  for (int k = 0; k < 500; ++k) {
+    std::string s(1 + rng() % 300, 'a');
+    for (char& ch : s) ch = alphabet[rng() % sizeof alphabet];
+    s[0] = 'a';
+    mismatches += t.encode(s) != naive(s);
+  }
+  CHECK_EQ(mismatches, 0);
+  std::string big(300000, 'a');
+  for (char& ch : big) ch = alphabet[rng() % sizeof alphabet];
+  big[0] = 'a';
+  const auto t0 = std::chrono::steady_clock::now();
+  const Ids ids = t.encode(big);
+  const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  CHECK(!ids.empty() && s < 10.0);  // the O(n^2) loop needs minutes here
+  std::printf("    300k characters -> %zu tokens in %.3f s\n", ids.size(), s);
 }

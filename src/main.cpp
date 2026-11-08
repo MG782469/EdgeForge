@@ -17,6 +17,7 @@
 #include <thread>
 #include <vector>
 
+#include "ef/eos_study.h"
 #include "ef/error.h"
 #include "ef/format.h"
 #include "ef/json.h"
@@ -34,6 +35,7 @@
 #include "ef/qkernels.h"
 #include "ef/threadpool.h"
 #include "ef/tokenizer.h"
+#include "ef/verify_chat.h"
 #include "ef/verify_tokenizer.h"
 #include "ef/quantizer.h"
 #include "ef/verify_quant.h"
@@ -53,7 +55,7 @@ using namespace ef;
 
 namespace {
 
-constexpr const char* kVersion = "0.7.0 (stage 7)";
+constexpr const char* kVersion = "0.8.0 (stage 8)";
 
 // Acceptance numbers for TinyLlama-1.1B (computed from its config; see docs).
 struct KnownModel {
@@ -76,19 +78,26 @@ void print_usage() {
       "  edgeforge verify-forward --golden DIR --model-dir DIR [--prompt NAME]\n"
       "  edgeforge generate (--model-dir DIR | --qmodel FILE.efq) (--ids 1,529,... | --ids-from GOLDEN_PROMPT_DIR)\n"
       "                     [--max-new 32] [--eos ID] [--bench FILE] [--threads N] [--kernels auto|avx2|scalar]\n"
-      "  edgeforge chat     (--model-dir DIR | --qmodel FILE.efq --tokenizer-dir DIR) [--prompt TEXT] [--system TEXT]\n"
-      "                     [--max-new 256] [--ctx 2048] [--threads N] [--kernels auto|avx2|scalar]\n"
-      "                     [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
-      "  edgeforge tokenize --tokenizer-dir DIR --text TEXT [--no-special]\n"
+      "  edgeforge chat     (--model-dir DIR | --qmodel FILE.efq --tokenizer-dir DIR) [--prompt TEXT]\n"
+      "                     [--system TEXT | --no-system] [--max-new 256] [--ctx 2048] [--threads N]\n"
+      "                     [--kernels auto|avx2|scalar] [--temp 0] [--top-k 0] [--top-p 1] [--rep-penalty 1] [--seed 0]\n"
+      "                     [--no-stop-markers] [--stop TEXT] [--repeat-count 3] [--repeat-span 12] [--eos-min-p 0]\n"
+      "  edgeforge verify-chat --golden DIR (--model-dir DIR | --qmodel FILE.efq --tokenizer-dir DIR) [--threads N]\n"
+      "  edgeforge eos-study --golden tests/golden/chat_eos_study.json --model-dir DIR [--qmodel FILE.efq]\n"
+      "                     [--labels LABELS.json] [--out bench/eos_study] [--threads N]\n"
+      "  edgeforge eos-study --results bench/eos_study_results.json --labels LABELS.json [--out bench/eos_study]\n"
+      "  edgeforge tokenize --tokenizer-dir DIR (--text TEXT | --text-file FILE [--ids-out IDS.txt]) [--no-special]\n"
       "  edgeforge verify-tokenizer --tokenizer-dir DIR --golden DIR [--model-dir DIR]\n"
       "  edgeforge quantize --model-dir DIR --out FILE.efq [--policy auto|uniform|NAME] [--override TENSOR=TYPE,...]\n"
       "                     [--layers q4_0] [--lm-head q8_0] [--embed bf16] [--no-search] [--threads N]\n"
       "  edgeforge verify-quant --qmodel FILE.efq --model-dir DIR [--golden DIR] [--threads N]\n"
       "  edgeforge quant-analyze --model-dir DIR [--golden DIR]\n"
       "  edgeforge eval-quant --qmodel FILE.efq [--model-dir DIR] [--golden DIR] [--text FILE] [--max-tokens 128]\n"
-      "                     [--tokenizer-dir DIR] [--threads N] [--kernels auto|avx2|scalar]\n"
+      "                     [--window 512 --chunks 8] [--tokenizer-dir DIR] [--threads N] [--kernels auto|avx2|scalar]\n"
       "  edgeforge bench-decode (--qmodel FILE.efq | --model-dir DIR) [--ids-from DIR | --ids 1,...] [--tokens 32]\n"
-      "                     [--threads 2,4,6,12] [--bench bench/membench.json]\n"
+      "                     [--threads 2,4,6,12] [--no-ladder] [--bench bench/membench.json]\n"
+      "  edgeforge profile  (--qmodel FILE.efq | --model-dir DIR) [--ids-from DIR | --ids 1,...] [--tokens 32]\n"
+      "                     [--threads N] [--kernels auto|avx2|scalar]\n"
       "  edgeforge sysinfo\n\n"
       "inspect   Print config, header and tensor table; --tensor shows values + stats of one tensor.\n"
       "verify    Check the checkpoint against the config and the TinyLlama acceptance numbers;\n"
@@ -103,6 +112,16 @@ void print_usage() {
       "generate  Greedy decoding from token ids with tok/s and GB/s.\n"
       "chat      Interactive chat (TinyLlama chat template, streaming, KV cache reused across turns);\n"
       "          --prompt answers one message and exits. Greedy by default (--temp > 0 to sample).\n"
+      "          A reply ends at EOS, or when the model writes a role marker (<|user|> ...; the reply is\n"
+      "          cut before it), or repeats a --repeat-span token span --repeat-count times (0 = off);\n"
+      "          --max-new is the last bound. Default system prompt: a short, direct reply.\n"
+      "verify-chat  Stage 8: chat replies vs Hugging Face greedy generation (tools/hf_chat_reference.py):\n"
+      "          prompt ids identical, generated ids identical up to near-ties; then the default chat\n"
+      "          settings on the same cases, with how and where each reply ended. Exit code 0 = PASS.\n"
+      "eos-study  Stage 8: does an --eos-min-p threshold end replies better without cutting real answers?\n"
+      "          Replays the Hugging Face traces (BF16) and the 4-bit engine's own traces at every threshold,\n"
+      "          compiles code replies, writes <out>.md, <out>_results.json and a labels file for the human\n"
+      "          review; with --labels applies the predeclared decision rule (--results: no model runs).\n"
       "verify-tokenizer  Stage 4: tokenizer, chat template and decoder vs Hugging Face golden data;\n"
       "          with --model-dir also prompt text -> EdgeForge -> reply text vs PyTorch.\n"
       "quantize  Stage 5: BF16 checkpoint -> .efq (Q4_0 layers, Q8_0 lm_head, BF16 embedding, F32 norms).\n"
@@ -116,9 +135,13 @@ void print_usage() {
       "eval-quant  Stage 6: the engine on the packed .efq weights - kernel check on the real weights,\n"
       "          KL / top-1 vs PyTorch (golden, teacher-forced), greedy continuations, text perplexity\n"
       "          vs the BF16 engine (--model-dir), tok/s, GB/s and peak RSS. Exit code 0 = PASS.\n"
+      "          --window W --chunks N scores the text like llama.cpp's llama-perplexity -c W --chunks N.\n"
       "--qmodel  generate / chat run the quantized engine straight from an .efq file.\n"
       "bench-decode  Stage 7 speed-up ladder: scalar 1 thread -> AVX2 1 thread -> AVX2 N threads;\n"
-      "          tok/s, GB/s, %% of the membench peak; checks every thread count gives identical logits.\n"
+      "          tok/s, GB/s, %% of the membench baseline; checks every thread count gives identical logits.\n"
+      "          --no-ladder: only the SIMD backend at the --threads counts (quick comparisons).\n"
+      "profile   Stage 8: per-op time of each decoded token (matmuls, attention, norms, lm_head) and\n"
+      "          the GB/s each group of matrices streams.\n"
       "--threads N   engine threads (default: physical cores). --kernels: auto = AVX2 if built in.\n",
       kVersion);
 }
@@ -163,20 +186,25 @@ Args parse_args(int argc, char** argv) {
       {"verify-forward", {"golden", "model-dir", "prompt", "kernels"}},
       {"generate", {"model-dir", "qmodel", "ids", "ids-from", "max-new", "eos", "bench", "threads", "kernels"}},
       {"chat", {"model-dir", "qmodel", "tokenizer-dir", "threads", "kernels", "prompt", "system", "max-new", "ctx", "temp", "top-k", "top-p",
-                "rep-penalty", "seed"}},
-      {"tokenize", {"tokenizer-dir", "text"}},
+                "rep-penalty", "seed", "stop", "repeat-count", "repeat-span", "eos-min-p"}},
+      {"verify-chat", {"golden", "model-dir", "qmodel", "tokenizer-dir", "threads", "kernels"}},
+      {"eos-study", {"golden", "model-dir", "qmodel", "tokenizer-dir", "results", "labels", "out", "threads", "kernels"}},
+      {"tokenize", {"tokenizer-dir", "text", "text-file", "ids-out"}},
       {"verify-tokenizer", {"tokenizer-dir", "golden", "model-dir"}},
       {"quantize", {"model-dir", "out", "policy", "layers", "lm-head", "embed", "override", "threads"}},
       {"verify-quant", {"qmodel", "model-dir", "golden", "threads"}},
       {"quant-analyze", {"model-dir", "golden"}},
-      {"eval-quant", {"qmodel", "model-dir", "golden", "text", "max-tokens", "tokenizer-dir", "threads", "kernels"}},
+      {"eval-quant", {"qmodel", "model-dir", "golden", "text", "max-tokens", "window", "chunks", "tokenizer-dir", "threads",
+                      "kernels"}},
       {"bench-decode", {"qmodel", "model-dir", "ids", "ids-from", "tokens", "threads", "bench"}},
+      {"profile", {"qmodel", "model-dir", "ids", "ids-from", "tokens", "threads", "kernels", "bench"}},
   };
   static const std::map<std::string, std::set<std::string>> flag_opts = {
       {"inspect", {"list"}}, {"verify", {"quick"}}, {"membench", {"sweep", "force"}}, {"sysinfo", {}},
-      {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {}}, {"tokenize", {"no-special"}},
+      {"verify-math", {}}, {"verify-forward", {}}, {"generate", {}}, {"chat", {"no-system", "no-stop-markers"}}, {"verify-chat", {}}, {"eos-study", {}},
+      {"tokenize", {"no-special"}},
       {"verify-tokenizer", {}}, {"quantize", {"no-search"}}, {"verify-quant", {}}, {"quant-analyze", {}},
-      {"eval-quant", {}}, {"bench-decode", {}},
+      {"eval-quant", {}}, {"bench-decode", {"no-ladder"}}, {"profile", {}},
   };
   Args a;
   if (argc < 2) return a;
@@ -741,19 +769,38 @@ double membench_peak(const Args& a) {
   return json::parse(text).at("peak_median_gbps").as_double();
 }
 
+std::vector<std::int32_t> bench_prompt(const Args& a) {
+  std::vector<std::int32_t> ids;
+  if (a.has("ids-from")) {
+    ids = GoldenPrompt::open(a.get("ids-from")).input_ids();
+  } else if (a.has("ids")) {
+    for (const auto id : parse_id_list(a.get("ids"))) ids.push_back(id);
+  } else if (fs::exists("tests/golden/prompts/p0_factual/manifest.json")) {
+    ids = GoldenPrompt::open("tests/golden/prompts/p0_factual").input_ids();
+  }
+  return ids;
+}
+
+int cmd_profile(const Args& a) {
+  ProfileOptions o;
+  o.qmodel = a.get("qmodel");
+  o.model_dir = a.get("model-dir");
+  o.prompt = bench_prompt(a);
+  o.tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("tokens", 32)));
+  const auto pool = make_pool(a);
+  o.pool = pool.get();
+  o.peak_gbps = membench_peak(a);
+  return run_profile(o);
+}
+
 int cmd_bench_decode(const Args& a) {
   BenchDecodeOptions o;
   o.qmodel = a.get("qmodel");
   o.model_dir = a.get("model-dir");
-  if (a.has("ids-from")) {
-    o.prompt = GoldenPrompt::open(a.get("ids-from")).input_ids();
-  } else if (a.has("ids")) {
-    for (const auto id : parse_id_list(a.get("ids"))) o.prompt.push_back(id);
-  } else if (fs::exists("tests/golden/prompts/p0_factual/manifest.json")) {
-    o.prompt = GoldenPrompt::open("tests/golden/prompts/p0_factual").input_ids();
-  }
+  o.prompt = bench_prompt(a);
   o.tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("tokens", 32)));
   if (a.has("threads")) o.threads = parse_uint_list(a.get("threads"));
+  o.ladder = !a.has("no-ladder");
   o.peak_gbps = membench_peak(a);
   return run_bench_decode(o);
 }
@@ -806,7 +853,7 @@ int cmd_generate(const Args& a) {
       const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
       if (!text.empty()) {
         const double peak = json::parse(text).at("peak_median_gbps").as_double();
-        std::printf(" = %.0f%% of membench peak %.2f GB/s", 100.0 * gbps / peak, peak);
+        std::printf(" = %.0f%% of the membench baseline %.2f GB/s", 100.0 * gbps / peak, peak);
       }
     }
     std::printf("\n");
@@ -816,8 +863,27 @@ int cmd_generate(const Args& a) {
 }
 
 int cmd_tokenize(const Args& a) {
-  if (!a.has("tokenizer-dir") || !a.has("text")) throw Error("tokenize needs --tokenizer-dir DIR and --text TEXT");
+  if (!a.has("tokenizer-dir") || a.has("text") == a.has("text-file")) {
+    throw Error("tokenize needs --tokenizer-dir DIR and one of --text TEXT / --text-file FILE");
+  }
   const Tokenizer tok = Tokenizer::load(a.get("tokenizer-dir"));
+  if (a.has("text-file")) {  // Stage 8: whole files (e.g. wikitext-2), ids written to --ids-out
+    std::ifstream in(a.get("text-file"), std::ios::binary);
+    if (!in) throw Error("cannot open '" + a.get("text-file") + "'");
+    const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto ids = tok.encode(body, true, !a.has("no-special"));
+    const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("%s: %zu bytes -> %zu tokens (BOS added) in %.2f s\n", a.get("text-file").c_str(), body.size(),
+                ids.size(), s);
+    if (a.has("ids-out")) {
+      std::ofstream out(a.get("ids-out"), std::ios::binary);
+      for (auto id : ids) out << id << '\n';
+      if (!out) throw Error("cannot write '" + a.get("ids-out") + "'");
+      std::printf("ids written to %s\n", a.get("ids-out").c_str());
+    }
+    return 0;
+  }
   const auto ids = tok.encode(a.get("text"), true, !a.has("no-special"));
   std::printf("%zu tokens (BOS added):\n", ids.size());
   for (auto id : ids) std::printf("  %6d  %s\n", id, json::escape(tok.piece(id)).c_str());
@@ -835,7 +901,16 @@ int cmd_chat(const Args& a) {
   ChatOptions o;
   o.max_seq = static_cast<std::size_t>(std::max(16LL, a.get_int("ctx", model.config().max_position_embeddings)));
   o.max_new = static_cast<std::size_t>(std::max(1LL, a.get_int("max-new", 256)));
-  o.system_prompt = a.get("system");
+  o.system_prompt = a.has("no-system") ? std::string() : a.get("system", kDefaultSystemPrompt);
+  if (a.has("no-stop-markers")) o.stop.stop_strings.clear();
+  if (a.has("stop")) {
+    if (a.get("stop").empty()) throw Error("--stop needs a non-empty text");
+    o.stop.stop_strings.push_back(a.get("stop"));
+  }
+  o.stop.repeat_count = static_cast<std::size_t>(std::max(0LL, a.get_int("repeat-count", 3)));
+  o.stop.repeat_span = static_cast<std::size_t>(std::max(1LL, a.get_int("repeat-span", 12)));
+  o.stop.eos_min_p = static_cast<float>(a.get_double("eos-min-p", 0.0));
+  if (o.stop.eos_min_p < 0.0f || o.stop.eos_min_p > 1.0f) throw Error("--eos-min-p expects 0..1");
   o.sampler.temperature = static_cast<float>(a.get_double("temp", 0.0));
   o.sampler.top_k = static_cast<int>(a.get_int("top-k", 0));
   o.sampler.top_p = static_cast<float>(a.get_double("top-p", 1.0));
@@ -846,10 +921,14 @@ int cmd_chat(const Args& a) {
   ChatSession chat(model, tok, o);
 
   auto print_stats = [](const TurnStats& s) {
-    std::printf("  [prompt %zu tok, %zu reused, %zu computed in %.1f s | reply %zu tok in %.1f s = %.2f tok/s%s%s]\n",
+    std::string end = stop_reason_name(s.reason);
+    if (s.reason == StopReason::StopString) end += " '" + s.stop_detail + "', reply cut before it";
+    if (s.reason == StopReason::Repetition) end += " (" + s.stop_detail + "), reply cut at the first repeat";
+    if (s.reason == StopReason::MaxNew) end += " (--max-new)";
+    std::printf("  [prompt %zu tok, %zu reused, %zu computed in %.1f s | reply %zu tok in %.1f s = %.2f tok/s | end: %s%s]\n",
                 s.prompt_tokens, s.reused_tokens, s.prefill_tokens, s.prefill_s, s.generated, s.decode_s,
-                s.decode_s > 0 ? static_cast<double>(s.generated) / s.decode_s : 0.0,
-                s.hit_limit ? ", hit --max-new" : "", s.dropped_messages ? ", oldest turns dropped" : "");
+                s.decode_s > 0 ? static_cast<double>(s.generated) / s.decode_s : 0.0, end.c_str(),
+                s.dropped_messages ? ", oldest turns dropped" : "");
   };
   auto stream = [](const std::string& t) {
     std::fwrite(t.data(), 1, t.size(), stdout);
@@ -873,7 +952,8 @@ int cmd_chat(const Args& a) {
               static_cast<long long>(model.config().num_hidden_layers), model.description().c_str(),
               engine_label(pool.get()).c_str(),
               tok.vocab_size(), tok.chat_template().empty() || is_zephyr_template(tok.chat_template()) ? "" : " (unknown chat template!)");
-  std::printf("sampling: %s | context %zu tokens | commands: /reset  /exit\n\n", sampling.c_str(), o.max_seq);
+  std::printf("sampling: %s | context %zu tokens | commands: /reset  /exit\n", sampling.c_str(), o.max_seq);
+  std::printf("system: %s\n\n", o.system_prompt.empty() ? "(none)" : ("\"" + o.system_prompt + "\"").c_str());
   std::string line;
   while (true) {
     std::printf("You: ");
@@ -1013,6 +1093,7 @@ int main(int argc, char** argv) {
     }
     if (a.command == "generate") return cmd_generate(a);
     if (a.command == "bench-decode") return cmd_bench_decode(a);
+    if (a.command == "profile") return cmd_profile(a);
     if (a.command == "chat") return cmd_chat(a);
     if (a.command == "quantize") return cmd_quantize(a);
     if (a.command == "verify-quant") {
@@ -1033,6 +1114,8 @@ int main(int argc, char** argv) {
       o.text_file = a.get("text");
       o.tokenizer_dir = a.get("tokenizer-dir");
       o.max_text_tokens = static_cast<std::size_t>(std::max(2LL, a.get_int("max-tokens", 128)));
+      o.window = static_cast<std::size_t>(std::max(0LL, a.get_int("window", 0)));
+      o.max_chunks = static_cast<std::size_t>(std::max(0LL, a.get_int("chunks", 0)));
       const auto pool = make_pool(a);
       o.pool = pool.get();
       return run_eval_quant(o);
@@ -1045,6 +1128,33 @@ int main(int argc, char** argv) {
       return run_quant_analyze(o);
     }
     if (a.command == "tokenize") return cmd_tokenize(a);
+    if (a.command == "eos-study") {
+      EosStudyOptions o;
+      o.golden = a.get("golden");
+      o.model_dir = a.get("model-dir");
+      o.qmodel = a.get("qmodel");
+      o.tokenizer_dir = a.get("tokenizer-dir");
+      o.results = a.get("results");
+      o.labels = a.get("labels");
+      o.out = a.get("out", "bench/eos_study");
+      const auto pool = make_pool(a);
+      o.pool = pool.get();
+      return run_eos_study(o);
+    }
+    if (a.command == "verify-chat") {
+      if (!a.has("golden")) throw Error("verify-chat needs --golden DIR (with chat_generation.json)");
+      VerifyChatOptions o;
+      o.golden_dir = a.get("golden");
+      o.model_dir = a.get("model-dir");
+      o.qmodel = a.get("qmodel");
+      o.tokenizer_dir = a.get("tokenizer-dir");
+      if (!o.qmodel.empty() && !o.model_dir.empty()) {
+        throw Error("verify-chat runs one engine: --model-dir DIR (BF16) or --qmodel FILE.efq --tokenizer-dir DIR");
+      }
+      const auto pool = make_pool(a);
+      o.pool = pool.get();
+      return run_verify_chat(o);
+    }
     if (a.command == "verify-tokenizer") {
       if (!a.has("golden") || !a.has("tokenizer-dir")) throw Error("verify-tokenizer needs --tokenizer-dir DIR and --golden DIR");
       VerifyTokenizerOptions o;

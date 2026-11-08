@@ -4,7 +4,8 @@
 //   1. kernel correctness on the real weights: packed Q4_0 / Q8_0 dot = dequantize-then-dot;
 //   2. next-token distributions vs the PyTorch FP32 reference (golden, teacher-forced):
 //      KL(ref || ours), top-1 agreement, and the greedy continuation of every golden prompt;
-//   3. perplexity of a fixed text, our BF16 engine vs the quantized engine, with per-position KL;
+//   3. perplexity of a text, our BF16 engine vs the quantized engine, with per-position KL - one
+//      window, or chunks scored exactly like llama.cpp's llama-perplexity (comparable numbers);
 //   4. speed (tok/s, GB/s of weights) of both engines and the quantized engine's peak RSS.
 // Quality targets are fixed in advance (eval_quant.cpp) and never tuned to a result.
 #pragma once
@@ -43,7 +44,10 @@ struct EvalQuantOptions {
   std::filesystem::path golden_dir;     // PyTorch FP32 reference prompts (optional)
   std::filesystem::path text_file;      // perplexity text (optional)
   std::filesystem::path tokenizer_dir;  // default: model_dir
-  std::size_t max_text_tokens = 128;
+  std::size_t max_text_tokens = 128;   // window == 0: one window of at most this many tokens
+  // window > 0: llama-perplexity scheme - chunks of `window` tokens (first token -> BOS), only the
+  // second half of each chunk scored; at most max_chunks chunks (0 = all that fit).
+  std::size_t window = 0, max_chunks = 0;
   std::vector<std::int32_t> text_ids;   // tests: token ids to use instead of text_file
   ThreadPool* pool = nullptr;           // Stage 7: run both engines multi-threaded
   EvalQuantReport* report = nullptr;

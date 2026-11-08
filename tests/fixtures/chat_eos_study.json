@@ -1,0 +1,53 @@
+{
+ "comment": "Stage 8 EOS-threshold study. Cases, thresholds and the decision rule below were fixed on 2026-11-01, before any result of this study existed; they must not be changed to make a threshold pass. tools/hf_chat_reference.py --study writes the Hugging Face traces (tests/golden/chat_eos_study.json), edgeforge eos-study evaluates them.",
+ "max_new_tokens": 300,
+ "thresholds": [0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30],
+ "systems": {
+  "none": "",
+  "default": "You are a helpful assistant. Give one short, direct reply to the user's message."
+ },
+ "decision_rule": [
+  "Every reply is generated with the chat defaults except the threshold: greedy, the role-marker and repetition stops on, max 300 new tokens; only --eos-min-p changes between rows.",
+  "Human labels (one per distinct reply text): A complete and coherent single reply; B understandable but unnecessarily verbose; C invented conversation turns; D prematurely truncated legitimate answer; E incorrect or incoherent answer.",
+  "C1: at least 75% of the greeting cases (at least 8) give a single coherent reply (label A or B) with the default system prompt.",
+  "C2: no factual, explanation, code, list or multi-turn reply, with either system prompt, is labelled D where the threshold changed it.",
+  "C3: no reply the threshold changed gets worse than with the threshold off: labelled D or E where the threshold-off reply was not, or its code stops compiling.",
+  "C4: C1-C3 hold for both the BF16 engine and the 4-bit engine.",
+  "A threshold qualifies only if C1-C4 all hold; of the qualifying thresholds the largest (most conservative) is recommended. If none qualifies, --eos-min-p stays opt-in and the default stays 0 (off).",
+  "Replies a threshold does not change need no new label: they are the threshold-off reply."
+ ],
+ "cases": [
+  {"name": "greet_hi_how_r_u", "kind": "greeting", "turns": ["hi how r u?"]},
+  {"name": "greet_hello", "kind": "greeting", "turns": ["Hello!"]},
+  {"name": "greet_how_are_you", "kind": "greeting", "turns": ["Hi, how are you?"]},
+  {"name": "greet_hinglish", "kind": "greeting", "turns": ["Namaste! Aap kaise ho?"]},
+  {"name": "greet_good_morning", "kind": "greeting", "turns": ["Good morning!"]},
+  {"name": "greet_whats_up", "kind": "greeting", "turns": ["hey whats up"]},
+  {"name": "greet_kya_haal", "kind": "greeting", "turns": ["kya haal hai bhai?"]},
+  {"name": "greet_nice_to_meet", "kind": "greeting", "turns": ["Hi there, nice to meet you."]},
+  {"name": "greet_day_going", "kind": "greeting", "turns": ["Hey! How's your day going?"]},
+  {"name": "greet_sab_badhiya", "kind": "greeting", "turns": ["Hello, kaise ho aap? Sab badhiya?"]},
+  {"name": "fact_capital", "kind": "factual", "turns": ["What is the capital of France?"]},
+  {"name": "fact_boiling", "kind": "factual", "turns": ["At what temperature does water boil at sea level?"]},
+  {"name": "fact_author", "kind": "factual", "turns": ["Who wrote Romeo and Juliet?"]},
+  {"name": "fact_continents", "kind": "factual", "turns": ["How many continents are there on Earth?"]},
+  {"name": "fact_gold", "kind": "factual", "turns": ["What is the chemical symbol for gold?"]},
+  {"name": "explain_cache", "kind": "explanation", "turns": ["Explain what a CPU cache is in two sentences."]},
+  {"name": "explain_hash_table", "kind": "explanation", "turns": ["Explain how a hash table works, with an example."]},
+  {"name": "explain_process_thread", "kind": "explanation", "turns": ["What is the difference between a process and a thread? Explain in detail."]},
+  {"name": "explain_https", "kind": "explanation", "turns": ["Explain how HTTPS keeps data secure, step by step."]},
+  {"name": "explain_ram_ssd", "kind": "explanation", "turns": ["Why is RAM faster than an SSD? Give a detailed explanation."]},
+  {"name": "code_max", "kind": "code", "lang": "c", "turns": ["Write a C function that returns the larger of two integers."]},
+  {"name": "code_array_max", "kind": "code", "lang": "cpp", "turns": ["Write a C++ function that returns the largest element of an array."]},
+  {"name": "code_palindrome", "kind": "code", "lang": "python", "turns": ["Write a Python function that checks whether a string is a palindrome."]},
+  {"name": "code_fibonacci", "kind": "code", "lang": "cpp", "turns": ["Write a C++ program that prints the first 10 Fibonacci numbers."]},
+  {"name": "code_factorial", "kind": "code", "lang": "python", "turns": ["Write a Python function that returns the factorial of n using recursion."]},
+  {"name": "list_colors", "kind": "list", "turns": ["List the three primary colors."]},
+  {"name": "list_clean_code", "kind": "list", "turns": ["Give me a numbered list of 5 tips for writing clean code."]},
+  {"name": "list_tea", "kind": "list", "turns": ["List the steps to make a cup of tea, as a numbered list."]},
+  {"name": "multi_name", "kind": "multi-turn", "turns": ["Hi! My name is Asha.", "What is my name?"]},
+  {"name": "multi_math", "kind": "multi-turn", "turns": ["What is 12 + 30?", "Now multiply that by 2."]},
+  {"name": "multi_python_list", "kind": "multi-turn", "turns": ["What is Python?", "Give me one example of a Python list."]},
+  {"name": "multi_hi_book", "kind": "multi-turn", "turns": ["Hi!", "Can you recommend a good book on algorithms?"]}
+ ]
+}

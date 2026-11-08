@@ -1,0 +1,18 @@
+{
+  "name": "edgeforge-studio-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "EdgeForge Studio web UI (React + TypeScript, bundled with esbuild). dist/ is committed; npm is only needed to rebuild.",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "marked": "^18.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
+}

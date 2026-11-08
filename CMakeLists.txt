@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(EdgeForge VERSION 0.7.0 LANGUAGES CXX)
+project(EdgeForge VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -86,6 +86,8 @@ add_library(ef_core STATIC
   src/tokenizer.cpp
   src/sampler.cpp
   src/chat.cpp
+  src/verify_chat.cpp
+  src/eos_study.cpp
   src/verify_tokenizer.cpp
   src/quant.cpp
   src/qfile.cpp
@@ -124,6 +126,8 @@ add_executable(ef_tests
   tests/test_golden.cpp
   tests/test_model.cpp
   tests/test_tokenizer.cpp
+  tests/test_chat.cpp
+  tests/test_eos_study.cpp
   tests/test_quant.cpp
   tests/test_qinfer.cpp
 )
@@ -131,7 +135,7 @@ target_link_libraries(ef_tests PRIVATE ef_core)
 target_include_directories(ef_tests PRIVATE tests)
 ef_configure(ef_tests)
 
-foreach(suite json fp16 safetensors config membench kernels golden model tokenizer sampler chat quant qfile qinfer)
+foreach(suite json fp16 safetensors config membench kernels golden model tokenizer sampler chat eos quant qfile qinfer)
   add_test(NAME ${suite} COMMAND ef_tests ${suite})
 endforeach()
 
@@ -161,6 +165,14 @@ if(EF_GOLDEN_DIR AND EXISTS "${EF_TOKENIZER_DIR}/tokenizer.json")
                      --model-dir "${EF_MODEL_DIR}")
     set_tests_properties(golden_text_e2e PROPERTIES TIMEOUT 1800)
   endif()
+endif()
+
+# Stage 8: chat replies vs Hugging Face greedy generation (tools/hf_chat_reference.py writes the
+# golden file; re-run cmake after creating it). BF16 engine, about 15 minutes.
+if(EF_MODEL_DIR AND EF_GOLDEN_DIR AND EXISTS "${EF_GOLDEN_DIR}/chat_generation.json")
+  add_test(NAME golden_chat
+           COMMAND edgeforge verify-chat --golden "${EF_GOLDEN_DIR}" --model-dir "${EF_MODEL_DIR}")
+  set_tests_properties(golden_chat PROPERTIES TIMEOUT 3600)
 endif()
 
 if(EF_MODEL_DIR)

@@ -84,6 +84,15 @@ struct ForwardTrace {
   std::vector<float> final_norm;  // [D]: final RMSNorm output (lm_head input)
 };
 
+// Stage 8: where the time of each forward pass goes (Transformer::set_profile). Timing is taken
+// between consecutive ops on the calling thread, so a parallel op counts its wall time.
+struct ForwardProfile {
+  enum Op { Embed, AttnNorm, QKV, Rope, Attention, OProj, Residual, FfnNorm, GateUp, SwiGLU, Down, FinalNorm, LmHead, kOps };
+  double seconds[kOps] = {};
+  std::size_t forwards = 0;
+  static const char* name(int op) noexcept;
+};
+
 class Transformer {
  public:
   // max_seq: KV-cache capacity in tokens (<= max_position_embeddings).
@@ -102,11 +111,14 @@ class Transformer {
   void reset() noexcept { cached_ = 0; }
   const Model& model() const noexcept { return m_; }
   ThreadPool* pool() const noexcept { return pool_; }
+  // nullptr (default) = no timing. The profile accumulates until reset by the caller.
+  void set_profile(ForwardProfile* p) noexcept { prof_ = p; }
   std::size_t kv_cache_bytes() const noexcept { return (k_cache_.size() + v_cache_.size()) * sizeof(float); }
 
  private:
   const Model& m_;
   ThreadPool* pool_ = nullptr;
+  ForwardProfile* prof_ = nullptr;
   std::size_t max_seq_ = 0, cached_ = 0;
   std::size_t D_ = 0, F_ = 0, H_ = 0, KV_ = 0, hd_ = 0, kvd_ = 0, V_ = 0, L_ = 0;
   float eps_ = 1e-5f;

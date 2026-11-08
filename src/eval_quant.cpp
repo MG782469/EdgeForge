@@ -302,66 +302,124 @@ int run_eval_quant(const EvalQuantOptions& o) {
       std::ifstream in(o.text_file, std::ios::binary);
       if (!in) throw Error("cannot open text file '" + o.text_file.string() + "'");
       const std::string body((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-      text_ids = tok->encode(body, true);
+      text_ids = tok->encode(body, true, false);  // plain text: "<s>" etc. are not special (as llama-perplexity)
     }
   }
-  if (text_ids.size() > o.max_text_tokens) text_ids.resize(o.max_text_tokens);
-  if (text_ids.size() >= 2) {
-    const std::size_t N = text_ids.size();
-    std::printf("\n  text: %s, %zu tokens, teacher-forced\n",
-                o.text_file.empty() ? "(token ids)" : o.text_file.filename().string().c_str(), N);
-    std::vector<float> qlog((N - 1) * V);
-    double nll_q = 0.0;
-    {
-      std::printf("    quantized engine ... ");
-      std::fflush(stdout);
-      Transformer tq(qm, N, o.pool);
-      double fwd_s = 0.0;  // forward passes only, same measurement as for the BF16 engine
-      for (std::size_t p = 0; p < N; ++p) {
-        const auto f0 = std::chrono::steady_clock::now();
-        const float* lg = tq.forward(text_ids[p], p, true);
-        fwd_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count();
-        if (p + 1 < N) {
-          std::copy_n(lg, V, qlog.data() + p * V);
-          nll_q += neg_log_prob(lg, V, text_ids[p + 1]);
-        }
-      }
-      R.tps_q = static_cast<double>(N) / fwd_s;
-      R.ppl_q = std::exp(nll_q / static_cast<double>(N - 1));
-      std::printf("PPL %.3f, %.2f tok/s\n", R.ppl_q, R.tps_q);
+  // Chunks to evaluate: ids, and the first position whose next-token prediction is scored.
+  struct Chunk {
+    std::vector<std::int32_t> ids;
+    std::size_t first = 0;  // predictions at positions [first, ids.size() - 1) are scored
+  };
+  std::vector<Chunk> chunks;
+  if (o.window == 0) {  // one window from the start, every prediction scored
+    if (text_ids.size() > o.max_text_tokens) text_ids.resize(o.max_text_tokens);
+    if (text_ids.size() >= 2) chunks.push_back({text_ids, 0});
+  } else {  // llama-perplexity scheme: chunks of W tokens, first token -> BOS, second half scored
+    const std::size_t W = o.window;
+    if (W < 4) throw Error("--window must be at least 4 tokens");
+    std::size_t n_chunk = text_ids.size() / W;
+    if (o.max_chunks > 0) n_chunk = std::min(n_chunk, o.max_chunks);
+    if (n_chunk == 0 && !text_ids.empty()) {
+      std::printf("\n  text has %zu tokens: too short for --window %zu, skipped\n", text_ids.size(), W);
     }
-    R.q_peak_rss = peak_rss_bytes();
-    if (!o.model_dir.empty()) {
-      std::printf("    BF16 engine      ... ");
-      std::fflush(stdout);
-      const Model ref = Model::load(o.model_dir);
-      const ModelConfig& rc = ref.config();
-      if (rc.hidden_size != c.hidden_size || rc.num_hidden_layers != c.num_hidden_layers || rc.vocab_size != c.vocab_size) {
-        throw Error("--model-dir is a different model than the .efq file");
+    for (std::size_t ci = 0; ci < n_chunk; ++ci) {
+      Chunk ch;
+      ch.ids.assign(text_ids.begin() + static_cast<std::ptrdiff_t>(ci * W),
+                    text_ids.begin() + static_cast<std::ptrdiff_t>((ci + 1) * W));
+      if (c.bos_token_id >= 0) ch.ids[0] = static_cast<std::int32_t>(c.bos_token_id);
+      ch.first = W / 2;
+      chunks.push_back(std::move(ch));
+    }
+  }
+  if (!chunks.empty()) {
+    std::size_t max_len = 0, n_scored = 0;
+    for (const auto& ch : chunks) {
+      max_len = std::max(max_len, ch.ids.size());
+      n_scored += ch.ids.size() - 1 - ch.first;
+    }
+    const std::string src = o.text_file.empty() ? std::string("(token ids)") : o.text_file.filename().string();
+    if (o.window == 0) {
+      std::printf("\n  text: %s, %zu tokens, teacher-forced, every prediction scored\n", src.c_str(), max_len);
+    } else {
+      std::printf("\n  text: %s, %zu tokens -> %zu chunks x %zu (llama-perplexity scheme: BOS first, second half "
+                  "scored), %zu predictions\n",
+                  src.c_str(), text_ids.size(), chunks.size(), o.window, n_scored);
+    }
+    std::unique_ptr<Model> ref;
+    std::unique_ptr<Transformer> tb;
+    Transformer tq(qm, max_len, o.pool);
+    double nll_q = 0.0, nll_r = 0.0, fwd_q = 0.0, fwd_r = 0.0, worst_ratio = 0.0;
+    std::size_t n_fwd_q = 0, n_fwd_r = 0;
+    auto timed = [](Transformer& t, std::int32_t token, std::size_t pos, bool want, double& acc) {
+      const auto f0 = std::chrono::steady_clock::now();
+      const float* lg = t.forward(token, pos, want);
+      acc += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count();
+      return lg;
+    };
+    for (std::size_t ci = 0; ci < chunks.size(); ++ci) {
+      const Chunk& ch = chunks[ci];
+      const std::size_t n = ch.ids.size(), S = n - 1 - ch.first;
+      std::vector<float> qlog(S * V);
+      double cq = 0.0, cr = 0.0;
+      tq.reset();
+      for (std::size_t p = 0; p + 1 < n; ++p) {
+        const bool want = p >= ch.first;
+        const float* lg = timed(tq, ch.ids[p], p, want, fwd_q);
+        ++n_fwd_q;
+        if (!want) continue;
+        std::copy_n(lg, V, qlog.data() + (p - ch.first) * V);
+        cq += neg_log_prob(lg, V, ch.ids[p + 1]);
       }
-      Transformer tb(ref, N, o.pool);
-      double nll_r = 0.0, fwd_s = 0.0;
-      for (std::size_t p = 0; p < N; ++p) {
-        const auto f0 = std::chrono::steady_clock::now();
-        const float* lg = tb.forward(text_ids[p], p, true);
-        fwd_s += std::chrono::duration<double>(std::chrono::steady_clock::now() - f0).count();
-        if (p + 1 < N) {
-          nll_r += neg_log_prob(lg, V, text_ids[p + 1]);
-          text.add(compare_dist(lg, qlog.data() + p * V, V));
+      nll_q += cq;
+      if (ci == 0) {
+        R.q_peak_rss = peak_rss_bytes();  // before the BF16 reference is loaded
+        if (!o.model_dir.empty()) {
+          ref = std::make_unique<Model>(Model::load(o.model_dir));
+          const ModelConfig& rc = ref->config();
+          if (rc.hidden_size != c.hidden_size || rc.num_hidden_layers != c.num_hidden_layers ||
+              rc.vocab_size != c.vocab_size) {
+            throw Error("--model-dir is a different model than the .efq file");
+          }
+          tb = std::make_unique<Transformer>(*ref, max_len, o.pool);
         }
       }
-      R.tps_ref = static_cast<double>(N) / fwd_s;
-      R.ppl_ref = std::exp(nll_r / static_cast<double>(N - 1));
-      std::printf("PPL %.3f, %.2f tok/s\n", R.ppl_ref, R.tps_ref);
+      if (tb) {
+        tb->reset();
+        for (std::size_t p = 0; p + 1 < n; ++p) {
+          const bool want = p >= ch.first;
+          const float* lg = timed(*tb, ch.ids[p], p, want, fwd_r);
+          ++n_fwd_r;
+          if (!want) continue;
+          cr += neg_log_prob(lg, V, ch.ids[p + 1]);
+          text.add(compare_dist(lg, qlog.data() + (p - ch.first) * V, V));
+        }
+        nll_r += cr;
+        worst_ratio = std::max(worst_ratio, std::exp((cq - cr) / static_cast<double>(S)));
+      }
+      if (chunks.size() > 1) {
+        std::printf("    chunk %3zu/%zu: PPL %s%.3f%s\n", ci + 1, chunks.size(),
+                    tb ? strf("%.3f -> ", std::exp(cr / static_cast<double>(S))).c_str() : "",
+                    std::exp(cq / static_cast<double>(S)), tb ? " (BF16 -> quantized)" : " (quantized)");
+        std::fflush(stdout);
+      }
+    }
+    R.tps_q = static_cast<double>(n_fwd_q) / fwd_q;
+    R.ppl_q = std::exp(nll_q / static_cast<double>(n_scored));
+    std::printf("    quantized engine: PPL %.3f, %.2f forward passes/s\n", R.ppl_q, R.tps_q);
+    if (tb) {
+      R.tps_ref = static_cast<double>(n_fwd_r) / fwd_r;
+      R.ppl_ref = std::exp(nll_r / static_cast<double>(n_scored));
+      std::printf("    BF16 engine     : PPL %.3f, %.2f forward passes/s\n", R.ppl_ref, R.tps_ref);
       std::printf("    per position vs BF16: %s\n", text.summary().c_str());
-      std::printf("    perplexity: %.3f -> %.3f (%+.2f%%)\n", R.ppl_ref, R.ppl_q, 100.0 * (R.ppl_q / R.ppl_ref - 1.0));
+      std::printf("    perplexity: %.3f -> %.3f (%+.2f%%)%s\n", R.ppl_ref, R.ppl_q, 100.0 * (R.ppl_q / R.ppl_ref - 1.0),
+                  chunks.size() > 1 ? strf("; worst chunk ratio %.4f", worst_ratio).c_str() : "");
       const double gb_q = R.tps_q * static_cast<double>(qm.weight_bytes_per_token()) / 1e9;
-      const double gb_r = R.tps_ref * static_cast<double>(ref.weight_bytes_per_token()) / 1e9;
+      const double gb_r = R.tps_ref * static_cast<double>(ref->weight_bytes_per_token()) / 1e9;
       std::printf("\n  speed (%s kernels, %u thread%s; the full ladder: edgeforge bench-decode):\n",
                   kern::backend_name(kern::backend()), o.pool != nullptr ? o.pool->size() : 1u,
                   o.pool != nullptr && o.pool->size() > 1 ? "s" : "");
       std::printf("    BF16 engine     : %.2f tok/s, %s/token -> %.2f GB/s of weights\n", R.tps_ref,
-                  human_bytes(ref.weight_bytes_per_token()).c_str(), gb_r);
+                  human_bytes(ref->weight_bytes_per_token()).c_str(), gb_r);
       std::printf("    quantized engine: %.2f tok/s, %s/token -> %.2f GB/s of weights (%.2fx the BF16 tok/s)\n",
                   R.tps_q, human_bytes(qm.weight_bytes_per_token()).c_str(), gb_q, R.tps_q / R.tps_ref);
     } else {

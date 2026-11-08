@@ -1,0 +1,156 @@
+/* EdgeForge Studio - "forge heat": brushed-steel plates, graphite type, and one bold element -
+   load shown as heated metal (cold steel -> dull red -> cherry -> orange -> amber). */
+:root {
+  --steel: #d4d8dc;      /* page */
+  --plate: #eceef0;      /* panels */
+  --plate-hi: #f7f8f9;   /* plate highlight / paper */
+  --groove: #c2c7cc;     /* rules and slots */
+  --slot: #dfe2e5;       /* empty bar */
+  --graphite: #1c2024;   /* text */
+  --iron: #5a626a;       /* secondary text */
+  --heat-1: #5e160d;
+  --heat-2: #a52a17;
+  --heat-3: #d9561a;
+  --heat-4: #f2a531;
+  --ramp-up: linear-gradient(to top, var(--heat-1) 0%, var(--heat-2) 32%, var(--heat-3) 62%, var(--heat-4) 100%);
+  --ramp-right: linear-gradient(to right, var(--heat-1) 0%, var(--heat-2) 32%, var(--heat-3) 62%, var(--heat-4) 100%);
+  --display: "Big Shoulders Display", "Bahnschrift", "Arial Narrow", "TeX Gyre Heros Cn", sans-serif;
+  --text: "Archivo", "Segoe UI", "Liberation Sans", sans-serif;
+  --code: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--steel); color: var(--graphite); font: 15px/1.5 var(--text); font-variant-numeric: tabular-nums; }
+button { font: 500 14px var(--text); color: var(--graphite); background: var(--plate-hi); border: 1px solid var(--groove); border-radius: 3px; padding: 6px 13px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--heat-3); }
+button:focus-visible { outline: 2px solid var(--heat-3); outline-offset: 2px; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--graphite); border-color: var(--graphite); color: var(--plate-hi); min-width: 74px; }
+button.primary:hover:not(:disabled) { background: #2c3237; border-color: var(--heat-3); }
+.spacer { flex: 1; }
+.quiet { color: var(--iron); font-size: 13px; }
+
+.app { display: flex; flex-direction: column; height: 100%; }
+.top { display: flex; align-items: center; gap: 10px; padding: 10px 18px 0; }
+.mark { width: 14px; height: 22px; background: var(--ramp-up); border-radius: 1px; }
+.wordmark { font: 800 24px/1 var(--display); letter-spacing: 0.4px; }
+
+.layout { flex: 1; display: grid; grid-template-columns: minmax(380px, 1fr) minmax(540px, 1.3fr); grid-template-rows: minmax(0, 1fr); gap: 14px; padding: 12px 18px 18px; min-height: 0; }
+.plate { background: var(--plate); border: 1px solid var(--groove); border-top-color: #e6e9ec; border-radius: 4px; box-shadow: inset 0 1px 0 var(--plate-hi); display: flex; flex-direction: column; min-height: 0; }
+.plate-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px 8px; flex-wrap: wrap; }
+.plate-head h2 { font: 800 21px/1.1 var(--display); margin: 0; letter-spacing: 0.3px; }
+
+/* left: prompt and answer */
+.left .plate-head { border-bottom: 1px solid var(--groove); padding-bottom: 12px; }
+.editor { position: relative; height: 136px; flex: none; border-bottom: 1px solid var(--groove); background: var(--plate-hi); }
+.editor-host, .plain-editor { position: absolute; inset: 0 0 20px 0; }
+.plain-editor { width: 100%; background: transparent; color: var(--graphite); border: 0; resize: none; padding: 12px 16px; font: 15px/1.5 var(--text); outline: none; }
+.editor-mode { position: absolute; bottom: 0; left: 0; right: 0; height: 20px; font-size: 12px; color: var(--iron); padding: 0 16px; }
+.transcript { flex: 1; overflow: auto; padding: 16px; min-height: 0; }
+.empty { color: var(--iron); max-width: 52ch; margin: 4px 0; }
+.msg { max-width: 72ch; margin: 0 0 14px; }
+.msg.user { font-weight: 600; padding-left: 12px; border-left: 3px solid var(--groove); }
+.msg.ai { padding-left: 12px; border-left: 3px solid var(--heat-3); }
+.md p { margin: 4px 0 8px; }
+.md pre { background: var(--slot); border: 1px solid var(--groove); border-radius: 3px; padding: 9px 11px; overflow: auto; }
+.md code { font: 13px var(--code); }
+.stats { margin-top: 4px; font-size: 12.5px; color: var(--iron); }
+.warn, .stats.warn { color: var(--heat-2); }
+.note { font-size: 13px; color: var(--heat-2); margin: 0 0 12px; }
+.raw { max-height: 96px; overflow: auto; font: 12px var(--code); color: var(--heat-2); margin: 0; padding: 8px 16px; border-top: 1px solid var(--groove); }
+
+/* right: CPU activity (about two thirds) and overview.
+   Inside the CPU panel only two parts give way when height is short: the vCPU bars shrink first, down
+   to a floor, then the thread list scrolls. Nothing in the panel can spill over the Overview. */
+.right { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.cpu-plate { flex: 1 1 0; min-height: 330px; overflow: hidden; container: cpu / inline-size; }
+.metrics-plate { flex: none; }
+.state { font-size: 13px; color: var(--iron); display: inline-flex; align-items: center; gap: 6px; }
+.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--groove); }
+.state.on { color: var(--graphite); }
+.state.on::before { background: var(--heat-3); box-shadow: 0 0 0 3px rgba(217, 86, 26, 0.18); }
+.sub { margin: 0 16px 6px; color: var(--iron); font-size: 13px; }
+
+.slot { background: var(--slot); border: 1px solid var(--groove); box-shadow: inset 0 1px 2px rgba(28, 32, 36, 0.12); position: relative; overflow: hidden; }
+.heat { position: absolute; overflow: hidden; transition: height 0.15s linear, width 0.15s linear; }
+.heat-up { left: 0; right: 0; bottom: 0; }
+.heat-right { top: 0; bottom: 0; left: 0; }
+.heat-ramp { position: absolute; }
+.heat-up .heat-ramp { left: 0; right: 0; bottom: 0; background: var(--ramp-up); }
+.heat-right .heat-ramp { top: 0; bottom: 0; left: 0; background: var(--ramp-right); }
+
+.vcpus { flex: 1 1 0; display: grid; gap: 10px; padding: 2px 16px 0; min-height: 96px; }
+.vcpu { display: flex; flex-direction: column; min-width: 0; min-height: 0; container: vcpu / inline-size; }
+.vcpu-pct { text-align: center; font: 800 26px/1 var(--display); padding-bottom: 6px; }
+.vcpu-pct small { font-size: 14px; font-weight: 600; color: var(--iron); margin-left: 1px; }
+.slot-up { flex: 1; border-radius: 2px; min-height: 24px; }
+.vcpu-id { text-align: center; font-size: 12px; color: var(--iron); padding-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.threads-head { flex: none; display: flex; align-items: baseline; gap: 4px 10px; padding: 10px 16px 4px; margin-top: 10px; border-top: 1px solid var(--groove); flex-wrap: wrap; }
+.threads-head h3 { font: 800 18px/1.1 var(--display); margin: 0; letter-spacing: 0.3px; }
+.workers { flex: 0 1 auto; min-height: 0; overflow: auto; padding: 0 16px 10px; display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 28px; align-content: start; }
+.worker { display: grid; grid-template-columns: minmax(150px, 200px) 1fr 48px minmax(120px, 150px); gap: 12px; align-items: center; padding: 2px 0; min-width: 0; }
+.worker-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.worker-name .quiet { font-weight: 400; font-size: 12px; }
+.slot-right { height: 12px; border-radius: 2px; }
+.worker-pct { font: 800 18px/1 var(--display); text-align: right; }
+.worker-cpu { font-size: 13px; color: var(--iron); white-space: nowrap; }
+
+/* one strip of five readouts; subgrid keeps labels, values and notes on shared rows when a label wraps.
+   The strip (not each gauge) is the size container: containment on a gauge would switch its subgrid off. */
+.gauges { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: auto auto auto; margin: 2px 16px 14px; border-top: 1px solid var(--groove); border-bottom: 1px solid var(--groove); background: var(--plate-hi); container-type: inline-size; }
+.gauge { display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 2px; padding: 10px 14px; min-width: 0; }
+.gauge + .gauge { border-left: 1px solid var(--groove); }
+.gauge-label { font-size: 13px; line-height: 1.3; color: var(--iron); align-self: end; }
+.gauge-value { font: 800 clamp(24px, 4.6cqi, 44px)/1.05 var(--display); white-space: nowrap; }
+.gauge-note { font-size: 12px; line-height: 1.35; color: var(--iron); }
+
+@container vcpu (max-width: 56px) {
+  .vcpu-id .pre { display: none; }
+  .vcpu-pct { font-size: 22px; }
+  .vcpu-pct small { font-size: 12px; }
+}
+/* Two columns of threads: always when there are more than six, and for any count on short screens
+   (a 1920x1080 laptop at 150% scaling leaves the page only about 1280x585). In two columns the tid
+   moves to the row's tooltip, and on narrower panels "on Linux vCPU 3" shortens to "vCPU 3". */
+@container cpu (min-width: 600px) {
+  .workers.many { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; }
+  .workers.many .worker { grid-template-columns: 116px minmax(36px, 1fr) 42px 122px; gap: 8px; }
+  .workers.many .worker-name .quiet { display: none; }
+}
+@container cpu (min-width: 600px) and (max-width: 819px) {
+  .workers.many .worker-cpu .pre { display: none; }
+  .workers.many .worker { grid-template-columns: 116px minmax(36px, 1fr) 42px 62px; }
+}
+@media (max-height: 680px) {
+  @container cpu (min-width: 600px) {
+    .workers { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; }
+    .workers .worker { grid-template-columns: 116px minmax(36px, 1fr) 42px 122px; gap: 8px; }
+    .workers .worker-name .quiet { display: none; }
+  }
+  @container cpu (min-width: 600px) and (max-width: 819px) {
+    .workers .worker-cpu .pre { display: none; }
+    .workers .worker { grid-template-columns: 116px minmax(36px, 1fr) 42px 62px; }
+  }
+  .top { padding-top: 6px; }
+  .layout { padding-top: 8px; padding-bottom: 12px; }
+  .plate-head { padding-top: 9px; padding-bottom: 6px; }
+  .left .plate-head { padding-bottom: 9px; }
+  .vcpu-pct { font-size: 22px; padding-bottom: 4px; }
+  .sub { margin-bottom: 4px; }
+  .gauge { padding-top: 8px; padding-bottom: 8px; }
+  .gauges { margin-bottom: 10px; }
+}
+@media (max-width: 1250px) {
+  .worker { grid-template-columns: minmax(120px, 160px) 1fr 42px minmax(105px, 130px); gap: 8px; }
+}
+@media (max-width: 1050px) {
+  .layout { grid-template-columns: 1fr; }
+  .cpu-plate, .metrics-plate { flex: none; }
+  .cpu-plate { height: 560px; }
+  .metrics-plate { max-height: none; }
+  .gauges { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heat { transition: none; }
+}

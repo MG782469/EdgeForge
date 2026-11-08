@@ -1,0 +1,22 @@
+{
+ "comment": "Stage 8 chat regression cases. tools/hf_chat_reference.py runs them through Hugging Face (golden), edgeforge verify-chat through our engines. 'default' must equal kDefaultSystemPrompt in include/ef/chat.h.",
+ "max_new_tokens": 128,
+ "systems": {
+  "none": "",
+  "default": "You are a helpful assistant. Give one short, direct reply to the user's message."
+ },
+ "cases": [
+  {"name": "greet_hi_how_r_u", "kind": "greeting", "turns": ["hi how r u?"]},
+  {"name": "greet_hello", "kind": "greeting", "turns": ["Hello!"]},
+  {"name": "greet_how_are_you", "kind": "greeting", "turns": ["Hi, how are you?"]},
+  {"name": "greet_hinglish", "kind": "greeting", "turns": ["Namaste! Aap kaise ho?"]},
+  {"name": "fact_capital", "kind": "factual", "turns": ["What is the capital of France?"]},
+  {"name": "fact_boiling", "kind": "factual", "turns": ["At what temperature does water boil at sea level?"]},
+  {"name": "fact_author", "kind": "factual", "turns": ["Who wrote Romeo and Juliet?"]},
+  {"name": "explain_cache", "kind": "explanation", "turns": ["Explain what a CPU cache is in two sentences."]},
+  {"name": "code_max", "kind": "code", "turns": ["Write a C function that returns the larger of two integers."]},
+  {"name": "list_colors", "kind": "list", "turns": ["List the three primary colors."]},
+  {"name": "multi_name", "kind": "multi-turn", "turns": ["Hi! My name is Asha.", "What is my name?"]},
+  {"name": "multi_math", "kind": "multi-turn", "turns": ["What is 12 + 30?", "Now multiply that by 2."]}
+ ]
+}

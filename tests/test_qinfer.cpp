@@ -5,6 +5,7 @@
 #include <random>
 #include <vector>
 
+#include "ef/bench_decode.h"
 #include "ef/eval_quant.h"
 #include "ef/fp16.h"
 #include "ef/golden.h"
@@ -431,4 +432,84 @@ TEST(qinfer_engine_threads_and_backends) {
     CHECK_EQ(same, kIds.size());
     std::printf("    engine AVX2 vs scalar logits: max rel err %.2e\n", worst);
   }
+}
+
+// ---------------------------------------------------------------- Stage 8
+
+TEST(qinfer_eval_window_scores_like_llama_perplexity) {
+  const ef_test::TinyDir d(tiny32(), 91);
+  QuantizeOptions o;
+  o.layers = QType::BF16;
+  o.lm_head = QType::BF16;
+  quantize_model(d.path, d.path / "bf16.efq", o);
+  std::vector<std::int32_t> ids(40);
+  for (std::size_t i = 0; i < ids.size(); ++i) ids[i] = static_cast<std::int32_t>((i * 7 + 3) % 40);
+  ids[0] = 1;
+  EvalQuantReport r;
+  EvalQuantOptions eo;
+  eo.qmodel = d.path / "bf16.efq";
+  eo.model_dir = d.path;
+  eo.text_ids = ids;
+  eo.window = 16;  // 40 tokens -> 2 chunks of 16 (the last 8 tokens do not fill a chunk)
+  eo.report = &r;
+  CHECK_EQ(run_eval_quant(eo), 0);
+  CHECK_EQ(r.text_positions, std::size_t{2 * (16 - 1 - 8)});
+  // The same numbers computed by hand with the llama-perplexity scheme on the BF16 engine.
+  const Model ref = Model::load(d.path);
+  const auto V = static_cast<std::size_t>(ref.config().vocab_size);
+  double nll = 0.0;
+  for (std::size_t c = 0; c < 2; ++c) {
+    std::vector<std::int32_t> ch(ids.begin() + static_cast<std::ptrdiff_t>(c * 16),
+                                 ids.begin() + static_cast<std::ptrdiff_t>(c * 16 + 16));
+    ch[0] = 1;  // BOS replaces the first token of every chunk
+    Transformer t(ref, 16);
+    double cn = 0.0;
+    for (std::size_t p = 0; p + 1 < 16; ++p) {
+      const float* lg = t.forward(ch[p], p, true);
+      if (p < 8) continue;  // first half is context only
+      double m = -1e300, z = 0.0;
+      for (std::size_t i = 0; i < V; ++i) m = std::max(m, static_cast<double>(lg[i]));
+      for (std::size_t i = 0; i < V; ++i) z += std::exp(static_cast<double>(lg[i]) - m);
+      cn += m + std::log(z) - static_cast<double>(lg[static_cast<std::size_t>(ch[p + 1])]);
+    }
+    nll += cn;
+  }
+  const double expect = std::exp(nll / 14.0);
+  CHECK(std::fabs(r.ppl_ref - expect) <= 1e-12 * expect && r.ppl_q == r.ppl_ref);
+  eo.max_chunks = 1;
+  run_eval_quant(eo);
+  CHECK_EQ(r.text_positions, std::size_t{7});
+  eo.window = 64;  // longer than the text: skipped, not an error
+  eo.max_chunks = 0;
+  run_eval_quant(eo);
+  CHECK(r.text_positions == 0 && r.ppl_q == 0.0);
+}
+
+TEST(qinfer_profile_times_ops_without_changing_results) {
+  const ef_test::TinyDir d(tiny32(), 92);
+  quantize_model(d.path, d.path / "q.efq", QuantizeOptions{});
+  const Model q = Model::load_efq(d.path / "q.efq");
+  ForwardProfile prof;
+  Transformer a(q, kIds.size()), b(q, kIds.size());
+  b.set_profile(&prof);
+  const auto V = static_cast<std::size_t>(q.config().vocab_size);
+  for (std::size_t p = 0; p < kIds.size(); ++p) {
+    const float* la = a.forward(kIds[p], p);
+    const std::vector<float> va(la, la + V);
+    const float* lb = b.forward(kIds[p], p);
+    CHECK(va == std::vector<float>(lb, lb + V));
+  }
+  CHECK_EQ(prof.forwards, kIds.size());
+  double total = 0.0;
+  for (int op = 0; op < ForwardProfile::kOps; ++op) {
+    CHECK(prof.seconds[op] >= 0.0);
+    total += prof.seconds[op];
+  }
+  CHECK(total > 0.0 && prof.seconds[ForwardProfile::GateUp] > 0.0 && prof.seconds[ForwardProfile::LmHead] > 0.0);
+  CHECK_EQ(std::string(ForwardProfile::name(ForwardProfile::QKV)), std::string("q/k/v matmul"));
+  ProfileOptions po;
+  po.qmodel = d.path / "q.efq";
+  po.prompt = {1, 5};
+  po.tokens = 4;
+  CHECK_EQ(run_profile(po), 0);
 }

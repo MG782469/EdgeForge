@@ -3,17 +3,237 @@
 **Bandwidth-aware 4-bit CPU inference engine for TinyLlama-1.1B.**
 BIOS V2 · FRONTIER · "Your Own Inference Engine". C++20, no ML libraries in the runtime.
 
-> Current milestone: **Stage 7: AVX2 kernels + multi-threaded decoding on the packed 4-bit model.**
+> Current milestone: **Stage 8: per-op profiler, larger quality evaluation, llama.cpp comparison under
+> matched settings, reproducible report, demo** (built and tested in the sandbox; laptop run pending).
 > Checkpoints: `stage1-verified` (loader, membench, golden data), `stage2-verified` (math kernels),
 > `stage3-verified` (full forward pass + KV cache), `stage4-verified` (tokenizer + chat),
 > `stage5-verified` (mixed-precision quantizer: 12/12 checks, 154/154 matrices, 713.0 MiB),
-> `stage6-verified` (quantized inference: quality targets 5/5, 3.77× faster decode than BF16, 597 MiB RSS).
+> `stage6-verified` (quantized inference: quality targets 5/5, 3.77× faster decode than BF16, 597 MiB RSS),
+> `stage7-verified` (AVX2 + threads: 27.54 tok/s decode with 6 threads, 5.79× the scalar baseline,
+> quality targets 5/5).
+
+## Stage 8: measurement, llama.cpp comparison, demo (`tools/compare_llamacpp.sh`, `report.sh`, `demo.sh`)
+
+```bash
+cd "$SRC"                                         # run from the repository root (default prompt: tests/golden)
+D=~/edgeforge-data; M=$D/tinyllama; Q=$D/tinyllama-q4.efq
+~/ef-build/edgeforge profile --qmodel $Q          # where one decode token's time goes, op by op
+~/ef-build/edgeforge eval-quant --qmodel $Q --model-dir $M --text wiki.test.raw --window 512 --chunks 8
+bash tools/report.sh $M $Q                        # every measurement in this README -> bench/report_<host>.md
+PYTHON=~/llama-venv/bin/python bash tools/compare_llamacpp.sh ~/llama.cpp $M $Q   # setup below, ~20 min
+bash tools/demo.sh $M $Q                          # live demo: sizes, CPU, one answer, speed-up ladder, chat
+```
+
+**What changed.**
+- **`edgeforge profile`.** It times each op of the forward pass over the decode steps of a warm pass (after
+  one warm-up pass): embedding, both RMSNorms, q/k/v, RoPE, attention, o_proj, residual adds, gate/up,
+  SwiGLU, down, final norm and lm_head. For each group of matrices it also prints the weight bytes per
+  token and GB/s. The timer only reads the clock between ops, and a test checks that profiling does not
+  change the logits.
+- **Larger quality evaluation: `eval-quant --window W --chunks N`.** This is llama-perplexity's scheme:
+  - the text is tokenized once, with BOS, and cut into chunks of W tokens;
+  - the first token of each chunk is replaced by BOS;
+  - only the second half of each chunk is scored.
+
+  With W = 512 and N = 8 that is 2,048 scored predictions (Stages 6 and 7 scored 127), and the
+  perplexities are directly comparable with llama.cpp's. The Stage 6 targets are unchanged. Per-chunk
+  perplexity and the worst chunk ratio are printed. A test checks the scoring against a perplexity
+  computed by hand (agreement 1e-12).
+- **Tokenizer: the BPE merge loop was O(n²), now O(n log n).**
+  - Before: it rescanned the whole sequence after every merge. 80 KB of text took 91 s, so wikitext-2's
+    1.3 MB test set would have taken hours.
+  - Now: candidate pairs sit in a priority queue ordered by (merge rank, position) over a linked list.
+    The rule is the same (lowest rank first, leftmost on ties), so the ids are the same.
+  - Checks: all tokenizer tests and the golden cases are unchanged. A new test compares it with a naive
+    reference on 500 random strings, and flipping the tie-break makes that test fail.
+  - 1.3 MB now takes 2.2 s.
+- **`tokenize --text-file F [--ids-out ids.txt]`** handles files larger than the 128 KB command-line limit.
+  Evaluation text is plain text: a literal `<s>` in it is not a special token (same as llama-perplexity).
+- **Three scripts.** Each one keeps the exact commands and the raw output:
+  - `tools/report.sh`: sysinfo, membench, verify-quant, eval-quant, both bench-decode ladders and the
+    profile, in one Markdown file (about 10 minutes);
+  - `tools/compare_llamacpp.sh`: EdgeForge vs llama.cpp (below);
+  - `tools/demo.sh`: a 3-minute demo, then an open chat (`PAUSE=0` runs it without waiting for Enter).
+
+**llama.cpp setup** (WSL, once). The converter needs PyTorch, so it gets its own venv:
+
+```bash
+sudo apt install -y git unzip time
+git clone https://github.com/ggml-org/llama.cpp ~/llama.cpp
+cmake -S ~/llama.cpp -B ~/llama.cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/llama.cpp/build -j 6 --target llama-bench llama-perplexity llama-quantize
+python3 -m venv ~/llama-venv
+~/llama-venv/bin/pip install -r ~/llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
+```
+
+The comparison writes `summary.md`, the GGUF files and every raw log to `~/edgeforge-data/compare-<date>/`.
+
+**What the comparison matches:**
+- the same laptop and thread count (6);
+- the same BF16 checkpoint: llama.cpp converts it to a BF16 GGUF itself, then quantizes it with
+  `llama-quantize Q4_0`;
+- the same text, chunks and scored positions, and **the same token ids**: the script compares the ids
+  llama.cpp evaluated (stored in its KL-divergence file) with EdgeForge's tokenizer;
+- the same decode positions: 32 steps after the 23-token prompt (`llama-bench -d 23 -n 32` vs
+  `bench-decode`), 5 runs each.
+
+**What it cannot match, and how the summary handles it:**
+- **The quantization recipes differ, by design.** llama.cpp's Q4_0 stores the layer matrices and the
+  embedding in Q4_0 and the output matrix in Q6_K. EdgeForge stores Q4_0 + 6 Q8_0 matrices, a Q8_0 lm_head
+  and a BF16 embedding. So quality is reported as each engine's 4-bit model against **its own** BF16
+  model (perplexity ratio, mean KL divergence, top-1 agreement), and the weight bytes read per token
+  are listed for both.
+- **The arithmetic differs.** On AVX2, llama.cpp repacks Q4_0 weights into 8-row groups, quantizes the
+  activations to 8-bit and uses integer dot products; its KV cache is FP16. EdgeForge keeps activations
+  and the KV cache in FP32.
+- **Prompt processing is not compared.** llama.cpp batches the prompt (matrix-matrix); EdgeForge runs it
+  one token at a time (matrix-vector).
+- **A cross-check.** The two BF16 runs should give nearly the same perplexity on the same token ids.
+  That is an independent check of EdgeForge's BF16 engine.
+
+**Sandbox dry run** (2-core Xeon, full-size synthetic weights, so quality numbers are meaningless).
+All three scripts ran end to end; the comparison used a stand-in for the converter, because PyTorch is
+not available here. Profile of the 4-bit engine (2 threads): gate/up 44%, down 22%, q/k/v 13%,
+o_proj 12%, lm_head 7%, attention 0.9%; every other op is under 1%. So decode time is almost entirely
+matrix-vector products over the weights.
+
+### Stage 8 chat fix: how a reply ends (`include/ef/chat.h`, `edgeforge verify-chat`)
+
+**The problem, seen on the laptop.** `chat --max-new 64 --prompt "hi how r u?"` made both the BF16
+and the 4-bit engine invent further conversation turns. Neither produced EOS, so both stopped only at
+the 64-token limit. BF16 does it too, so it is not caused by quantization.
+
+**Model or runtime? `verify-chat` answers it with data.** `tools/hf_chat_reference.py` (dev-only,
+PyTorch) runs the same chat in Hugging Face transformers:
+- 12 cases: greetings (including the one above), factual questions, an explanation, code, a list and
+  two multi-turn conversations;
+- each case with and without the system prompt;
+- greedy decoding, FP32, stopping only at EOS or 128 tokens.
+
+`verify-chat` then checks and reports three things:
+1. **Same input and same raw output as Hugging Face.** The prompt ids must be identical, so the
+   template and tokenizer are right. The BF16 engine's greedy reply ids must be identical too; a
+   first difference is accepted only where Hugging Face's top-2 logits are within 0.01 (a near-tie).
+2. **How the raw model ends its replies,** using Hugging Face's own tokens: with EOS, at the limit,
+   with a role marker, or in a repetition loop. It also shows where the model gave EOS its highest
+   probability. If Hugging Face runs on too, the behaviour belongs to the model, not to our runtime.
+3. **The default chat settings on the same cases,** with how and where each reply ended. Two checks:
+   - no role marker ever reaches a reply;
+   - the repetition stop never cuts short a reply that the model ends with EOS on its own. Such a
+     reply comes out unchanged, unless it contains a role marker; then it is cut there, by design.
+
+**What changed in `chat`.** The template, tokenizer, weights, quantization and quality thresholds are
+unchanged.
+- **Default system prompt:** "You are a helpful assistant. Give one short, direct reply to the user's
+  message." It is only the content of TinyLlama's own `<|system|>` turn. `--system TEXT` replaces it;
+  `--no-system` removes it.
+- **A reply ends at:**
+  - **EOS**, as before.
+  - **A chat-role boundary:** the model writing `<|user|>`, `<|assistant|>`, `<|system|>` or `</s>`
+    as text. The reply is cut before it, and the marker is never printed: while streaming, text that
+    could still become a marker is held back. Ordinary text such as `Response:` or `User:` never ends
+    a reply.
+  - **A clear repetition:** any 12-token span occurring 3 times in the reply. The reply is cut where
+    the first repeat starts. Options: `--repeat-count`, `--repeat-span`; `--repeat-count 0` turns it
+    off.
+  - **`--max-new` (default 256):** only the last safety bound.
+- **Optional, off by default:** `--eos-min-p P` ends the turn when the model gives EOS at least
+  probability P. Part 2 of `verify-chat` shows whether that would help on this model.
+- **The stats line says how each reply ended,** e.g. `end: EOS` or `end: role marker '<|user|>',
+  reply cut before it`.
+
+**Tests.** 6 new unit tests on a scripted tiny model, whose next token is a fixed function of the
+current token. They cover:
+- a reply ending at EOS;
+- a reply that starts the next turn itself (cut, marker never shown, multi-turn continues with
+  KV-cache reuse);
+- 3-token and 8-token loops;
+- look-alike text that must not stop (`Response:`, `<|us`, `</ s>`, UTF-8);
+- max-new and full-context limits;
+- `--eos-min-p`.
+
+**On the laptop** (in `~/ef-venv`, which has PyTorch; first generation about 5 minutes):
+
+```bash
+python tools/hf_chat_reference.py --model-dir $M                           # -> tests/golden/chat_generation.json
+~/ef-build/edgeforge verify-chat --golden tests/golden --model-dir $M      # BF16 engine, ~15 min
+~/ef-build/edgeforge verify-chat --golden tests/golden --qmodel $Q --tokenizer-dir $M   # 4-bit engine
+cmake -S "$SRC" -B ~/ef-build                                               # adds the golden_chat CTest
+```
+
+**Known limit.** TinyLlama-1.1B can still ramble without writing a role marker and without repeating
+itself exactly. That is not cut, by design. `verify-chat` part 3 reports how often it happens.
+
+### Stage 8 EOS-threshold study (`edgeforge eos-study`)
+
+**Why.** The laptop's Hugging Face reference (`tests/golden/chat_generation.json`) shows that
+TinyLlama itself invents conversation turns. For example, "hi how r u?" with no system prompt gives
+"Hi there! How are you doing?\n\nResponse: I'm doing well..." and no EOS within 128 tokens. So this is
+the model, not our runtime (BF16 engine = Hugging Face, 28/28 replies). `--eos-min-p` ends a turn when
+the model gives EOS at least a given probability, and it shortened one greeting from 64 to 21 tokens.
+Whether it may become the default is decided by a rule written down before any study result
+existed.
+
+**What is fixed in advance** (`tests/fixtures/chat_eos_study.json`):
+- **Cases:** 32 cases, each with and without the default system prompt, up to 300 new tokens:
+  - 10 greetings, informal English and Hinglish;
+  - 5 factual questions;
+  - 5 explanations, several of them multi-paragraph;
+  - 5 code prompts (C, C++, Python);
+  - 3 lists;
+  - 4 multi-turn conversations.
+- **Thresholds:** off, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30.
+- **Generation:** the chat defaults (role-marker and repetition stops on); only the threshold changes.
+- **Human labels,** one per distinct reply: **A** complete and coherent single reply, **B**
+  understandable but unnecessarily verbose, **C** invented conversation turns, **D** prematurely
+  truncated legitimate answer, **E** incorrect or incoherent.
+- **The rule:**
+  - **C1:** at least 75% of the 10 greetings get A or B with the default system prompt.
+  - **C2:** no factual, explanation, code, list or multi-turn reply that the threshold changed is
+    labelled D, with either system prompt.
+  - **C3:** no changed reply gets worse: labelled D or E where the threshold-off reply was not, or
+    its code stops compiling.
+  - **C4:** C1 to C3 hold for the BF16 engine and for the 4-bit engine.
+  - **Outcome:** the largest qualifying threshold is recommended. If none qualifies, `--eos-min-p`
+    stays opt-in and the default stays off.
+
+**How it is measured.**
+- **BF16, offline.** Hugging Face's traces carry P(EOS) at every step, so every threshold is replayed
+  exactly from them; no BF16 run is needed. A step within 0.002 of a threshold is flagged
+  *borderline*. Only a multi-turn history that changed because an earlier reply was cut is run on
+  the BF16 engine.
+- **4-bit, on its own traces.** The 4-bit engine's probabilities differ from BF16's, so it is
+  evaluated on its own traces, replayed the same way.
+- **Code, objectively.** Code replies are compiled for syntax only (`gcc` / `g++ -fsyntax-only`,
+  Python `ast`). A pass does not mean the code is correct.
+- **Coherence, by a human.** Coherence, completeness and invented turns are labelled by a person. The
+  tool prints hints such as "dialogue-like paragraphs?" or "role marker after the cut", but never a
+  label.
+
+**On the laptop:**
+
+```bash
+source ~/ef-venv/bin/activate
+python tools/hf_chat_reference.py --model-dir $M --study    # Hugging Face traces; reuses complete runs, ~20-40 min
+~/ef-build/edgeforge eos-study --golden tests/golden/chat_eos_study.json --model-dir $M --qmodel $Q   # ~20-25 min
+#   -> bench/eos_study.md, bench/eos_study_results.json, bench/eos_study_labels_todo.json
+# put one letter (A-E) in every "label" of bench/eos_study_labels_todo.json, then (no model runs):
+~/ef-build/edgeforge eos-study --results bench/eos_study_results.json --labels bench/eos_study_labels_todo.json
+```
+
+`tools/hf_chat_reference.py --study` checks that a reused run comes from the same model (sha256). It
+also checks that any prompt it shares with `chat_generation.json` gets the same first tokens again.
+
+**Status:** pending. Until the rule says otherwise, `--eos-min-p` stays off by default.
+
+**Laptop results:** pending (`summary.md` from `compare_llamacpp.sh`, `bench/report_<host>.md`,
+`verify-chat` for both engines, `bench/eos_study.md`).
 
 ## Stage 7: SIMD + threads (`include/ef/qkernels.h`, `threadpool.h`, `bench_decode.h`)
 
 ```bash
 D=~/edgeforge-data; M=$D/tinyllama; Q=$D/tinyllama-q4.efq
-~/ef-build/edgeforge bench-decode --qmodel $Q            # speed-up ladder; % of peak from bench/membench.json
+~/ef-build/edgeforge bench-decode --qmodel $Q            # speed-up ladder; % of the membench baseline (bench/membench.json)
 ~/ef-build/edgeforge bench-decode --model-dir $M         # the same ladder for the BF16 engine
 ~/ef-build/edgeforge eval-quant --qmodel $Q --model-dir $M --golden tests/golden --text tests/fixtures/eval_text.txt
 ~/ef-build/edgeforge chat --qmodel $Q --tokenizer-dir $M  # defaults: AVX2, one thread per physical core
@@ -48,7 +268,36 @@ D=~/edgeforge-data; M=$D/tinyllama; Q=$D/tinyllama-q4.efq
 
 Clean under ThreadSanitizer, ASan/UBSan and Clang 18 `-Werror`, plus a build without AVX2.
 
-**Sandbox ladder** (2-core Xeon, full-size synthetic weights; laptop numbers come from the WSL run):
+**Verified on the real weights (Ryzen 5 7530U laptop, WSL).**
+- **Tests:** 19/19.
+- **`eval-quant` on the AVX2 + threads path: 5/5.** Mean KL 0.0880, confident top-1 98.8%, PPL ratio 1.1141,
+  golden greedy 4/4, no NaN/Inf.
+- **`bench-decode`:** thread-count invariance PASS.
+
+| Q4/Q8 engine, 23-token prompt + 32 decode steps | decode tok/s | vs scalar / 1 | weight GB/s* |
+|---|---|---|---|
+| scalar / 1 thread | 4.76 | 1.00× | 2.9 |
+| avx2 / 1 thread | 9.50 | 2.00× | 5.9 |
+| **avx2 / 6 threads (= physical cores)** | **27.54** | **5.79×** | **17.0 ≈ 90% of membench** |
+| avx2 / 12 threads (SMT) | 23.14 | 4.86× | 14.3 |
+
+| BF16 vs Q4/Q8 | BF16 engine | Q4/Q8 engine |
+|---|---|---|
+| Best `bench-decode` decode | 9.96 tok/s (≈ 20.6 GB/s*, ≈ 110% of membench) | 27.54 tok/s |
+| `eval-quant`, same workload | 8.01 tok/s | 26.06 tok/s (**3.25×**) |
+| Peak RSS | 1.94 GiB | ~632 MiB |
+
+\* **How to read the GB/s column.**
+- *Weight GB/s* = weight bytes per token × tok/s. It is an estimate of weight traffic: caches, prefetching
+  and KV-cache reads are not counted.
+- The 18.80 GB/s membench number is a software read benchmark, measured once. It is **not** the physical
+  bandwidth limit: the BF16 engine exceeded it (~110%).
+- So the fair claim is "the 4-bit engine streams ~90% of the measured membench baseline", not "~90% of
+  the hardware's bandwidth".
+- 12 SMT threads are slower than 6: two threads per core share the core's load ports and caches, and
+  each parallel step waits for its slowest thread.
+
+**Sandbox ladder** (2-core Xeon, full-size synthetic weights; shows the trend only):
 
 | Engine | kernels / threads | decode tok/s | speed-up | outputs |
 |---|---|---|---|---|
@@ -141,8 +390,9 @@ kernels).** Tests 19/19; `eval-quant` 5/5.
   arithmetic, and fewer bytes per token turns directly into speed.
 - This is not what the 2-core build sandbox showed (synthetic weights: 2.34 vs 2.02 tok/s, 1.16×). There,
   the same scalar code was compute-bound. Speed claims therefore come only from the laptop.
-- The membench peak is 18.80 GB/s, so a single scalar thread uses about 20% of the machine's bandwidth.
-  That is the headroom for Stage 7.
+- The membench baseline is 18.80 GB/s, and a single scalar thread streamed about 20% of it. That was the
+  headroom Stage 7 used: 27.54 tok/s, ~90% of the membench baseline (not of the hardware's limit; see
+  Stage 7).
 
 **Limits of this evaluation.**
 - The mean KL passes, but not every position is close.
@@ -429,7 +679,13 @@ tools/
   make_synthetic_golden.py     float64 numpy layer-0 golden data for a synthetic checkpoint
   build.sh                     build + test without CMake
   quantize_tinyllama.sh        reproduce + verify the Stage 5 model from the BF16 checkpoint
+  report.sh                    Stage 8: every README measurement in one Markdown report
+  compare_llamacpp.sh          Stage 8: EdgeForge vs llama.cpp, same laptop, text, token ids and threads
+  demo.sh                      Stage 8: the live demo
+  hf_chat_reference.py         Stage 8, dev-only: Hugging Face greedy chat replies for verify-chat (--study: eos-study traces)
 tests/fixtures/eval_text.txt   fixed text for the Stage 6 perplexity comparison
+tests/fixtures/chat_cases.json Stage 8 chat regression cases (greetings, facts, code, multi-turn)
+tests/fixtures/chat_eos_study.json  Stage 8 EOS-threshold study: cases, thresholds, decision rule (fixed in advance)
 docs/              architecture.md, golden_format.md
 ```
 
@@ -497,8 +753,9 @@ mkdir -p "$SRC/bench"
 Defaults: 1 GiB working set, thread sweep (1, 2, 4, physical cores, logical CPUs), 5 timed runs × 3
 passes, 1 warm-up, and every run's checksum is verified. Before running, plug the laptop in, set Windows
 power mode to *Best performance* and close other apps. The printed **peak median GB/s** is the
-denominator for bandwidth efficiency in later stages. It is software-measured read bandwidth, so it
-will be below the RAM's spec-sheet number.
+reference point for bandwidth efficiency in later stages. It is software-measured read bandwidth, so it
+will be below the RAM's spec-sheet number. It is also not a hard ceiling: Stage 7's BF16 engine
+streamed ~110% of it.
 
 ## 6. Golden reference data (dev-only; needs PyTorch)
 
@@ -556,10 +813,7 @@ python3 tools/make_synthetic_checkpoint.py --out /tmp/fake-tinyllama      # 2.2 
   access there). Its numpy maths self-test passes, and the probe format is exercised by `verify` on the
   synthetic checkpoint.
 
-## Next: Stage 8
+## Next
 
-Profiler, benchmarks and demo:
-- a per-op time breakdown (matmul, attention, norms) and roofline-style GB/s vs the membench peak;
-- a reproducible benchmark report (`bench-decode` + `eval-quant` + `sysinfo` in one file);
-- a broader quality evaluation than 4 prompts and 128 tokens;
-- the demo script.
+After the laptop run of Stage 8: the technical report for the judges, built from `summary.md` and
+`bench/report_<host>.md` (measured numbers only).
